@@ -1,0 +1,44 @@
+MoCA app: how to start
+======================
+
+ONE-TIME SETUP (about 10 minutes, needs internet)
+-------------------------------------------------
+1. Install Python 3.12 from https://www.python.org/downloads/macos/
+   (download the macOS installer, open it, click Continue until it finishes).
+
+2. Unzip this folder and move it somewhere you'll keep it (for example Documents).
+
+3. Right-click "start.command" and choose "Open", then click "Open" again.
+   (The Mac asks this only the first time, because the file came from the internet.)
+
+4. A black Terminal window appears and sets everything up. This takes a few minutes
+   the first time: it installs the app and downloads the speech recogniser.
+   When it's done, the app opens in your browser by itself.
+
+
+EVERY TIME AFTER THAT
+---------------------
+- Double-click "start.command". The app opens in the browser in a few seconds.
+- Keep the black Terminal window open while you use the app.
+  Close it when you're finished.
+- Use Google Chrome. Click "Allow" when it asks for the microphone and camera.
+- Wait for the green "Speech ready" sign at the top before starting a test.
+
+
+WHERE YOUR DATA IS
+------------------
+Everything stays on this computer. Nothing is sent to the internet.
+- moca.db        patients, tests and scores (created on first start)
+- results/       the recordings and photos from each test
+
+To back up: copy moca.db and the results folder to a USB stick or cloud drive.
+These hold private patient information, so keep the copies safe.
+
+
+IF SOMETHING GOES WRONG
+-----------------------
+- "Python 3.12 is needed": do step 1 again, then step 3.
+- The page says "App not running": double-click start.command again.
+- No sound or the mic doesn't work: open "Mic & camera" in the app and check
+  that Chrome is allowed to use the microphone (Chrome menu > Settings >
+  Privacy and security > Site settings > Microphone).
