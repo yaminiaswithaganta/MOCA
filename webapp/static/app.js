@@ -163,6 +163,57 @@ function heroTrail() {
   </svg>`;
 }
 
+// "30 points across 7 areas": donut + list, hovering one highlights the other
+function areasSection() {
+  const r = 78, C = 2 * Math.PI * r, gap = 3;
+  let at = 0;
+  const segs = DOMAINS.map((d) => {
+    const len = (C * d.max) / 30;
+    const s = `<circle class="seg" data-key="${d.key}" cx="100" cy="100" r="${r}" stroke="${d.color}"
+      stroke-dasharray="${(len - gap).toFixed(2)} ${(C - len + gap).toFixed(2)}" stroke-dashoffset="${(-at).toFixed(2)}"><title>${esc(d.label)}: ${d.max} points</title></circle>`;
+    at += len;
+    return s;
+  }).join("");
+  return `<section class="card areas">
+    <div class="areas-left">
+      <span class="eyebrow">What the MoCA measures</span>
+      <h2>30 points across 7 areas</h2>
+      <p class="muted">Point at an area to see how much it counts.</p>
+      <div class="donut-wrap">
+        <svg class="donut" viewBox="0 0 200 200">${segs}</svg>
+        <div class="donut-center"><b data-n>30</b><span data-l>points in total</span></div>
+      </div>
+      <div class="normal-chip"><i></i>26 or more is in the normal range</div>
+    </div>
+    <ul class="area-list">${DOMAINS.map((d) => `<li class="area-row" data-key="${d.key}" style="--c:${d.color}" tabindex="0">
+        <span class="area-ico">${icon(d.icon)}</span>
+        <span class="area-text"><b>${esc(d.label)}</b><small>${esc(d.what)}</small></span>
+        <span class="pips" aria-hidden="true">${"<i></i>".repeat(d.max)}</span>
+        <span class="area-pts">${d.max}<small>pts</small></span></li>`).join("")}
+    </ul>
+  </section>`;
+}
+
+function wireAreas() {
+  const box = view.querySelector(".areas");
+  if (!box) return;
+  const n = box.querySelector("[data-n]"), l = box.querySelector("[data-l]");
+  const set = (key) => {
+    const d = DOMAIN_OF[key];
+    box.classList.toggle("has-active", !!d);
+    box.querySelectorAll("[data-key]").forEach((el) => el.classList.toggle("on", el.dataset.key === key));
+    n.textContent = d ? d.max : 30;
+    n.style.color = d ? d.color : "";
+    l.textContent = d ? `${d.short} · ${Math.round((d.max / 30) * 100)}%` : "points in total";
+  };
+  box.querySelectorAll("[data-key]").forEach((el) => {
+    el.addEventListener("mouseenter", () => set(el.dataset.key));
+    el.addEventListener("focus", () => set(el.dataset.key));
+    el.addEventListener("mouseleave", () => set(null));
+    el.addEventListener("blur", () => set(null));
+  });
+}
+
 function greeting() {
   const h = new Date().getHours();
   const part = h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
@@ -216,13 +267,7 @@ async function home() {
       </section>
     </div>
 
-    <section class="card domains">
-      <div class="card-head"><div><h2 style="margin:0">30 points across 7 areas</h2><p class="muted" style="margin:.25rem 0 0">What the MoCA measures, and how much each part counts.</p></div></div>
-      <div class="stack">${DOMAINS.map((d) => `<span style="flex:${d.max};--c:${d.color}" title="${esc(d.label)}: ${d.max} points"></span>`).join("")}</div>
-      <div class="domain-grid">${DOMAINS.map((d) => `<div class="domain" style="--c:${d.color}">
-        <span class="domain-pts">${d.max}</span><span><b>${esc(d.label)}</b><small>${esc(d.what)}</small></span></div>`).join("")}
-        <div class="domain total"><span class="domain-pts">30</span><span><b>Total</b><small>26 or more is in the normal range</small></span></div></div>
-    </section>
+    ${areasSection()}
 
     <h2 class="section-title">How it works</h2>
     <div class="ways">
@@ -232,6 +277,7 @@ async function home() {
     </div>
   </div>`;
   wireRows();
+  wireAreas();
 }
 
 // ---------------------------------------------------------------- patients

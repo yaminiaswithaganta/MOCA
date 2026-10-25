@@ -129,6 +129,13 @@ const ICONS = {
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   pen: '<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 6l3 3"/>',
   quiet: '<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M17 9l4 6M21 9l-4 6"/>',
+  cube: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>',
+  paw: '<circle cx="6.5" cy="10" r="1.9"/><circle cx="10" cy="6" r="1.9"/><circle cx="14.5" cy="6" r="1.9"/><circle cx="18" cy="10" r="1.9"/><path d="M8 17.5c0-3 1.8-5.5 4.2-5.5s4.2 2.5 4.2 5.5c0 1.8-1.6 2.5-2.6 2.1-1-.4-2.2-.4-3.2 0-1 .4-2.6-.3-2.6-2.1z"/>',
+  target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/>',
+  chat: '<path d="M4 5.5h16v10.5H10l-5 4v-4H4z"/><path d="M8 10h8M8 13h5"/>',
+  link: '<circle cx="9" cy="12" r="5"/><circle cx="15" cy="12" r="5"/>',
+  repeat: '<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4v4h4"/><path d="M12 8.5V12l2.5 1.8"/>',
+  compass: '<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>',
   file: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>',
 };
 
@@ -146,12 +153,12 @@ export function avatar(name, cls = "") {
 
 // ---------------------------------------------------------------- the 7 MoCA areas, each with its own colour
 export const DOMAINS = [
-  { key: "visuospatial_executive", label: "Visuospatial / executive", short: "Visuospatial", what: "Trail making, cube, clock", max: 5, color: "#1b7aaf" },
-  { key: "naming", label: "Naming", short: "Naming", what: "Lion, rhino, camel", max: 3, color: "#22a699" },
-  { key: "attention", label: "Attention", short: "Attention", what: "Digits, letters, serial 7s", max: 6, color: "#f5b841" },
-  { key: "language", label: "Language", short: "Language", what: "Sentences, F-word fluency", max: 3, color: "#ef7d5b" },
-  { key: "abstraction", label: "Abstraction", short: "Abstraction", what: "Train–bicycle, watch–ruler", max: 2, color: "#8b7fd1" },
-  { key: "delayed_recall", label: "Delayed recall", short: "Recall", what: "The five words, no cues", max: 5, color: "#5bb8e6" },
-  { key: "orientation", label: "Orientation", short: "Orientation", what: "Date, day, place, city", max: 6, color: "#3f9b6b" },
+  { key: "visuospatial_executive", icon: "cube", label: "Visuospatial / executive", short: "Visuospatial", what: "Trail making, cube, clock", max: 5, color: "#1b7aaf" },
+  { key: "naming", icon: "paw", label: "Naming", short: "Naming", what: "Lion, rhino, camel", max: 3, color: "#22a699" },
+  { key: "attention", icon: "target", label: "Attention", short: "Attention", what: "Digits, letters, serial 7s", max: 6, color: "#f5b841" },
+  { key: "language", icon: "chat", label: "Language", short: "Language", what: "Sentences, F-word fluency", max: 3, color: "#ef7d5b" },
+  { key: "abstraction", icon: "link", label: "Abstraction", short: "Abstraction", what: "Train–bicycle, watch–ruler", max: 2, color: "#8b7fd1" },
+  { key: "delayed_recall", icon: "repeat", label: "Delayed recall", short: "Recall", what: "The five words, no cues", max: 5, color: "#5bb8e6" },
+  { key: "orientation", icon: "compass", label: "Orientation", short: "Orientation", what: "Date, day, place, city", max: 6, color: "#3f9b6b" },
 ];
 export const DOMAIN_OF = Object.fromEntries(DOMAINS.map((d) => [d.key, d]));
