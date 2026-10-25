@@ -1,0 +1,16 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Patient data -- never commit (names, dates of birth, voice recordings, photos)
+moca.db
+moca.db-journal
+results/
+
+# Webcam photos of a real person used by TestRealPhotos (kept local; repo is public)
+tests/real_photos/
+
+# Editor / OS
+.DS_Store
+.vscode/

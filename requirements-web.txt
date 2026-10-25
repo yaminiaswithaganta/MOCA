@@ -1,0 +1,6 @@
+# Everything the web app needs (includes the task requirements)
+-r requirements.txt
+fastapi
+uvicorn[standard]
+sqlalchemy
+python-multipart

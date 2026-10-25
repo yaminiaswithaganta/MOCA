@@ -1,0 +1,12 @@
+# Runtime (all three tasks)
+opencv-python
+numpy
+matplotlib
+scikit-image
+faster-whisper
+sounddevice
+# Optional: second opinion for reading clock numbers (also needs the Tesseract program)
+# pytesseract
+# Only needed to retrain models/digits_hog_softmax.npz (tools/train_digit_model.py)
+# scikit-learn
+# mlxtend
