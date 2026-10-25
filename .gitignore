@@ -14,3 +14,4 @@ tests/real_photos/
 # Editor / OS
 .DS_Store
 .vscode/
+server.log

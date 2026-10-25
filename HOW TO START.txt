@@ -1,6 +1,12 @@
 MoCA app: how to start
 ======================
 
+EASIEST WAY: open this folder in VS Code, start Claude Code (or Codex) in the
+terminal, and paste in everything from the file SETUP_FOR_AI.md. The AI installs
+and starts everything, then gives you a link to open.
+
+Or do it yourself:
+
 ONE-TIME SETUP (about 10 minutes, needs internet)
 -------------------------------------------------
 1. Install Python 3.12 from https://www.python.org/downloads/macos/
