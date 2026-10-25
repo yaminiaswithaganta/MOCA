@@ -2,7 +2,7 @@
 
 import { camera, mic, speak, stopCamera, stopSpeaking } from "./media.js";
 import { abortTest, resultCardHtml, runTest } from "./runner.js";
-import { age, api, avatar, band, config, esc, fmtDate, fmtDateTime, icon } from "./ui.js";
+import { DOMAINS, DOMAIN_OF, age, api, avatar, band, config, esc, fmtDate, fmtDateTime, icon } from "./ui.js";
 
 const view = document.getElementById("view");
 const navigate = (hash) => { location.hash = hash; };
@@ -150,26 +150,38 @@ function wireRows() {
   view.querySelectorAll("tr[data-href]").forEach((tr) => { tr.onclick = () => navigate(tr.dataset.href); });
 }
 
-// large decorative dial (the logo mark) bleeding off the right of the banner
-const HERO_SHAPE = `<svg viewBox="0 0 400 400" aria-hidden="true">
-  <circle cx="200" cy="200" r="150" fill="none" stroke="#ffffff" stroke-opacity=".10" stroke-width="56"/>
-  <path d="M200 50a150 150 0 1 1-142.7 196.4" fill="none" stroke="#5bb8e6" stroke-opacity=".55" stroke-width="56" stroke-linecap="round"/>
-  <circle cx="200" cy="200" r="44" fill="#ffffff" fill-opacity=".14"/>
-  <circle cx="292" cy="96" r="13" fill="#f5b841"/>
-</svg>`;
+// The trail-making path (Task 1) drawing itself across the banner
+const TRAIL = [["1", 1, 6], ["A", 3, 8.5], ["2", 2, 3.5], ["B", 4.5, 6.5], ["3", 3.5, 1],
+               ["C", 6.5, 3], ["4", 5.5, 8.5], ["D", 8, 5.5], ["5", 7.5, 1.5], ["E", 9, 8]];
+function heroTrail() {
+  const X = (x) => 20 + x * 44, Y = (y) => 380 - y * 40;
+  const pts = TRAIL.map(([, x, y]) => `${X(x)},${Y(y)}`).join(" ");
+  return `<svg viewBox="0 0 440 400" aria-hidden="true">
+    <polyline points="${pts}" class="trail-draw" pathLength="1"/>
+    ${TRAIL.map(([k, x, y], i) => `<g class="trail-node${k === "E" ? " last" : ""}" style="animation-delay:${0.2 + i * 0.32}s">
+      <circle cx="${X(x)}" cy="${Y(y)}" r="19"/><text x="${X(x)}" y="${Y(y) + 6}">${k}</text></g>`).join("")}
+  </svg>`;
+}
+
+function greeting() {
+  const h = new Date().getHours();
+  const part = h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+  const day = new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+  return `${part} · ${day}`;
+}
 
 // ---------------------------------------------------------------- home
 async function home() {
-  const [stats, recent] = await Promise.all([api("/api/stats"), api("/api/sessions?limit=8")]);
+  const [stats, recent] = await Promise.all([api("/api/stats"), api("/api/sessions?limit=6")]);
   const avg = stats.average_full != null ? stats.average_full.toFixed(1) : "—";
   view.innerHTML = `<div class="page">
     <div>
       <section class="hero">
-        <div class="hero-shape">${HERO_SHAPE}</div>
+        <div class="hero-shape">${heroTrail()}</div>
         <div class="hero-copy">
-          <span class="hero-badge">Montreal Cognitive Assessment</span>
-          <h1>Screen. Score. Track.</h1>
-          <p>All 13 MoCA tasks by voice and camera, each one scored the moment the answer is given.</p>
+          <span class="hero-badge">${icon("sun")} ${esc(greeting())}</span>
+          <h1>Screen. Score.<br>Track.</h1>
+          <p>All 13 Montreal Cognitive Assessment tasks by voice and camera, each one scored the moment the answer is given.</p>
           <div class="row">
             <a class="btn white lg cta" href="#/new">Start a new test</a>
             <a class="btn outline-white lg cta" href="#/patients">Patients &amp; results</a>
@@ -185,21 +197,38 @@ async function home() {
       </section>
     </div>
 
-    <section class="card">
-      <div class="card-head"><h2>Recent tests</h2><a href="#/patients" class="link">All patients ${icon("arrow")}</a></div>
-      ${recent.length ? `<table class="table clickable"><thead><tr><th>Patient</th><th>Date</th><th>Tasks</th><th class="r">Score</th></tr></thead><tbody>
-        ${recent.map((s) => `<tr data-href="#/session/${s.id}"><td><span class="person">${avatar(s.patient.name)}${esc(s.patient.name)}</span></td>
-          <td class="muted">${fmtDateTime(s.started_at)}</td>
-          <td>${s.tasks.length === 13 ? `<span class="tag brand">Full test</span>` : `<span class="tag">${s.tasks.length} task${s.tasks.length > 1 ? "s" : ""}</span>`}</td>
-          <td class="r">${scoreBadge(s)}</td></tr>`).join("")}
-      </tbody></table>` : emptyState("file", `No tests yet. Press <b>Start a new test</b> to begin.`)}
+    <div class="home-grid">
+      <section class="card">
+        <div class="card-head"><h2>Recent tests</h2><a href="#/patients" class="link">All patients ${icon("arrow")}</a></div>
+        ${recent.length ? `<table class="table clickable"><thead><tr><th>Patient</th><th>Date</th><th class="r">Score</th></tr></thead><tbody>
+          ${recent.map((s) => `<tr data-href="#/session/${s.id}"><td><span class="person">${avatar(s.patient.name)}<span>${esc(s.patient.name)}<br><small class="muted">${s.tasks.length === 13 ? "Full test" : `${s.tasks.length} task${s.tasks.length > 1 ? "s" : ""}`}</small></span></span></td>
+            <td class="muted">${fmtDateTime(s.started_at)}</td><td class="r">${scoreBadge(s)}</td></tr>`).join("")}
+        </tbody></table>` : emptyState("file", `No tests yet. Press <b>Start a new test</b> to begin.`)}
+      </section>
+      <section class="card checklist">
+        <h2>Before you begin</h2>
+        <ul>
+          <li><span class="check-ico">${icon("quiet")}</span><span><b>A quiet room</b><small>No TV or radio, and only one person talking.</small></span></li>
+          <li><span class="check-ico">${icon("sun")}</span><span><b>Good light</b><small>Light on the paper, not behind it, for the drawings.</small></span></li>
+          <li><span class="check-ico">${icon("pen")}</span><span><b>Paper and a dark pen</b><small>For the cube and the clock.</small></span></li>
+        </ul>
+        <a class="btn" href="#/check">${icon("mic")} Check microphone &amp; camera</a>
+      </section>
+    </div>
+
+    <section class="card domains">
+      <div class="card-head"><div><h2 style="margin:0">30 points across 7 areas</h2><p class="muted" style="margin:.25rem 0 0">What the MoCA measures, and how much each part counts.</p></div></div>
+      <div class="stack">${DOMAINS.map((d) => `<span style="flex:${d.max};--c:${d.color}" title="${esc(d.label)}: ${d.max} points"></span>`).join("")}</div>
+      <div class="domain-grid">${DOMAINS.map((d) => `<div class="domain" style="--c:${d.color}">
+        <span class="domain-pts">${d.max}</span><span><b>${esc(d.label)}</b><small>${esc(d.what)}</small></span></div>`).join("")}
+        <div class="domain total"><span class="domain-pts">30</span><span><b>Total</b><small>26 or more is in the normal range</small></span></div></div>
     </section>
 
     <h2 class="section-title">How it works</h2>
     <div class="ways">
-      <div class="way"><div class="way-ico">${icon("mic")}</div><div><h3>Speak</h3><p>Instructions are read aloud. The patient answers out loud, and every answer is transcribed on this computer.</p></div></div>
-      <div class="way"><div class="way-ico sun">${icon("camera")}</div><div><h3>Show</h3><p>The cube and clock drawings are held up to the camera and photographed after a short countdown.</p></div></div>
-      <div class="way"><div class="way-ico ok">${icon("check")}</div><div><h3>Score</h3><p>Each task is scored instantly against the MoCA rules, and the full score sheet is saved with recordings.</p></div></div>
+      <div class="way"><div class="way-num">1</div><div class="way-ico">${icon("mic")}</div><h3>Speak</h3><p>Instructions are read aloud. The patient answers out loud, and every answer is transcribed on this computer.</p></div>
+      <div class="way"><div class="way-num">2</div><div class="way-ico sun">${icon("camera")}</div><h3>Show</h3><p>The cube and clock drawings are held up to the camera and photographed after a short countdown.</p></div>
+      <div class="way"><div class="way-num">3</div><div class="way-ico ok">${icon("check")}</div><h3>Score</h3><p>Each task is scored instantly against the MoCA rules, and the score sheet is saved with the recordings.</p></div>
     </div>
   </div>`;
   wireRows();
@@ -376,15 +405,16 @@ async function sessionPage(id) {
         <h2 style="margin:0">By section</h2>
         ${shown.map((sec) => {
           const r = report.sections[sec.key];
-          return `<div class="sec-row"><span>${esc(sec.title.charAt(0) + sec.title.slice(1).toLowerCase())}</span>
-            <div class="bar ${r.score === r.max ? "full" : ""}"><div style="width:${(r.score / r.max) * 100}%"></div></div><b>${r.score} / ${r.max}</b></div>`;
+          const d = DOMAIN_OF[sec.key] || { label: sec.title, color: "#1b7aaf" };
+          return `<div class="sec-row" style="--c:${d.color}"><span><i class="dot"></i>${esc(d.label)}</span>
+            <div class="bar"><div style="width:${(r.score / r.max) * 100}%"></div></div><b>${r.score} / ${r.max}</b></div>`;
         }).join("")}
       </div>
     </div>
 
     <div class="card">
       <h2>Score sheet</h2>
-      <div class="sheet">${shown.map((sec) => `<div class="sheet-sec"><div class="sheet-title"><span>${esc(sec.title)}</span><b>${report.sections[sec.key].score} / ${report.sections[sec.key].max}</b></div>
+      <div class="sheet">${shown.map((sec) => `<div class="sheet-sec" style="--c:${(DOMAIN_OF[sec.key] || {}).color || "#1b7aaf"}"><div class="sheet-title"><span>${esc(sec.title)}</span><b>${report.sections[sec.key].score} / ${report.sections[sec.key].max}</b></div>
           ${sec.rows.filter((_, i) => tasksIn.has(sheetTaskOf(sec.key, i))).map((r) => `<div class="sheet-row"><span>${esc(r.label)}</span><span class="${r.score >= r.max ? "ok" : r.score ? "part" : "no"}">${r.score} / ${r.max}</span></div>`).join("")}</div>`).join("")}
       ${sheet.memory_recall && Object.keys(sheet.memory_recall).length ? `<div class="sheet-sec"><div class="sheet-title"><span>MEMORY (NOT SCORED)</span></div>
         ${Object.entries(sheet.memory_recall).map(([k, v]) => `<div class="sheet-row"><span>Learning ${esc(k.replace("trial", "trial "))}</span><span>${esc(v.join(", ") || "none")} (${v.length}/5)</span></div>`).join("")}</div>` : ""}

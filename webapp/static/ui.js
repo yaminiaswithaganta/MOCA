@@ -126,6 +126,9 @@ const ICONS = {
   mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>',
   sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>',
   camera: '<path d="M3 8a2 2 0 0 1 2-2h2.5l1.5-2h6l1.5 2H19a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  pen: '<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 6l3 3"/>',
+  quiet: '<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M17 9l4 6M21 9l-4 6"/>',
   file: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>',
 };
 
@@ -140,3 +143,15 @@ export function avatar(name, cls = "") {
   for (const c of String(name)) h = (h * 31 + c.charCodeAt(0)) % 360;
   return `<span class="avatar ${cls}" style="--h:${h}">${esc(ini)}</span>`;
 }
+
+// ---------------------------------------------------------------- the 7 MoCA areas, each with its own colour
+export const DOMAINS = [
+  { key: "visuospatial_executive", label: "Visuospatial / executive", short: "Visuospatial", what: "Trail making, cube, clock", max: 5, color: "#1b7aaf" },
+  { key: "naming", label: "Naming", short: "Naming", what: "Lion, rhino, camel", max: 3, color: "#22a699" },
+  { key: "attention", label: "Attention", short: "Attention", what: "Digits, letters, serial 7s", max: 6, color: "#f5b841" },
+  { key: "language", label: "Language", short: "Language", what: "Sentences, F-word fluency", max: 3, color: "#ef7d5b" },
+  { key: "abstraction", label: "Abstraction", short: "Abstraction", what: "Train–bicycle, watch–ruler", max: 2, color: "#8b7fd1" },
+  { key: "delayed_recall", label: "Delayed recall", short: "Recall", what: "The five words, no cues", max: 5, color: "#5bb8e6" },
+  { key: "orientation", label: "Orientation", short: "Orientation", what: "Date, day, place, city", max: 6, color: "#3f9b6b" },
+];
+export const DOMAIN_OF = Object.fromEntries(DOMAINS.map((d) => [d.key, d]));
