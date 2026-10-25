@@ -44,6 +44,15 @@ SAMPLE_RATE = 16000
 
 app = FastAPI(title="MoCA")
 init_db()
+
+
+@app.middleware("http")
+async def _no_stale_pages(request, call_next):
+    """The page and its scripts are re-checked on every load, so an update shows up at once."""
+    response = await call_next(request)
+    if request.url.path == "/" or request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 RESULTS_ROOT.mkdir(exist_ok=True)
 
 

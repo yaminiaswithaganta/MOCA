@@ -150,17 +150,12 @@ function wireRows() {
   view.querySelectorAll("tr[data-href]").forEach((tr) => { tr.onclick = () => navigate(tr.dataset.href); });
 }
 
-// decorative score dial for the home banner
-const HERO_ART = `<svg viewBox="0 0 200 200" aria-hidden="true">
-  <defs><linearGradient id="heroG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#14b8a6"/><stop offset="1" stop-color="#0ea5e9"/></linearGradient></defs>
-  <circle cx="100" cy="100" r="82" fill="#fff"/>
-  <circle cx="100" cy="100" r="62" fill="none" stroke="#e2eeec" stroke-width="14"/>
-  <circle cx="100" cy="100" r="62" fill="none" stroke="url(#heroG)" stroke-width="14" stroke-linecap="round"
-          stroke-dasharray="335 390" transform="rotate(-90 100 100)"/>
-  <circle cx="168" cy="44" r="9" fill="#ff7a59" opacity=".85"/>
-  <circle cx="34" cy="160" r="6" fill="#0ea5e9" opacity=".5"/>
-  <text x="100" y="106" text-anchor="middle" font-size="44" font-weight="800" fill="#12292a" font-family="inherit">26</text>
-  <text x="100" y="129" text-anchor="middle" font-size="13" font-weight="600" fill="#5a7170" font-family="inherit">out of 30</text>
+// large decorative dial (the logo mark) bleeding off the right of the banner
+const HERO_SHAPE = `<svg viewBox="0 0 400 400" aria-hidden="true">
+  <circle cx="200" cy="200" r="150" fill="none" stroke="#ffffff" stroke-opacity=".10" stroke-width="56"/>
+  <path d="M200 50a150 150 0 1 1-142.7 196.4" fill="none" stroke="#5bb8e6" stroke-opacity=".55" stroke-width="56" stroke-linecap="round"/>
+  <circle cx="200" cy="200" r="44" fill="#ffffff" fill-opacity=".14"/>
+  <circle cx="292" cy="96" r="13" fill="#f5b841"/>
 </svg>`;
 
 // ---------------------------------------------------------------- home
@@ -168,21 +163,28 @@ async function home() {
   const [stats, recent] = await Promise.all([api("/api/stats"), api("/api/sessions?limit=8")]);
   const avg = stats.average_full != null ? stats.average_full.toFixed(1) : "—";
   view.innerHTML = `<div class="page">
-    <section class="hero">
-      <div>
-        <span class="hero-badge">${icon("sparkle")} Automatic cognitive screening</span>
-        <h1>Montreal Cognitive Assessment</h1>
-        <p>All 13 MoCA tasks with voice and camera. Every answer is scored the moment it's given, and saved with the recordings and photos.</p>
-        <div class="row"><a class="btn primary lg" href="#/new">${icon("play")} Start a new test</a><a class="btn lg" href="#/patients">${icon("users")} Patients &amp; results</a></div>
-      </div>
-      <div class="hero-art">${HERO_ART}</div>
-    </section>
-    <div class="stat-grid">
-      <div class="stat"><div class="stat-ico c1">${icon("users")}</div><div><div class="stat-n">${stats.patients}</div><div class="stat-l">Patients</div></div></div>
-      <div class="stat"><div class="stat-ico c2">${icon("check")}</div><div><div class="stat-n">${stats.finished}</div><div class="stat-l">Tests completed</div></div></div>
-      <div class="stat"><div class="stat-ico c3">${icon("clock")}</div><div><div class="stat-n">${stats.in_progress}</div><div class="stat-l">In progress</div></div></div>
-      <div class="stat"><div class="stat-ico c4">${icon("chart")}</div><div><div class="stat-n">${avg}</div><div class="stat-l">Average full score</div></div></div>
+    <div>
+      <section class="hero">
+        <div class="hero-shape">${HERO_SHAPE}</div>
+        <div class="hero-copy">
+          <span class="hero-badge">Montreal Cognitive Assessment</span>
+          <h1>Screen. Score. Track.</h1>
+          <p>All 13 MoCA tasks by voice and camera, each one scored the moment the answer is given.</p>
+          <div class="row">
+            <a class="btn white lg cta" href="#/new">Start a new test</a>
+            <a class="btn outline-white lg cta" href="#/patients">Patients &amp; results</a>
+          </div>
+        </div>
+      </section>
+      <section class="stat-band">
+        <div class="lead-cell">Your testing<br>at a glance</div>
+        <div><div class="stat-n">${stats.patients}</div><div class="stat-l">Patients</div></div>
+        <div><div class="stat-n">${stats.finished}</div><div class="stat-l">Tests completed</div></div>
+        <div><div class="stat-n">${stats.in_progress}</div><div class="stat-l">In progress</div></div>
+        <div><div class="stat-n">${avg}</div><div class="stat-l">Average score /30</div></div>
+      </section>
     </div>
+
     <section class="card">
       <div class="card-head"><h2>Recent tests</h2><a href="#/patients" class="link">All patients ${icon("arrow")}</a></div>
       ${recent.length ? `<table class="table clickable"><thead><tr><th>Patient</th><th>Date</th><th>Tasks</th><th class="r">Score</th></tr></thead><tbody>
@@ -191,7 +193,15 @@ async function home() {
           <td>${s.tasks.length === 13 ? `<span class="tag brand">Full test</span>` : `<span class="tag">${s.tasks.length} task${s.tasks.length > 1 ? "s" : ""}</span>`}</td>
           <td class="r">${scoreBadge(s)}</td></tr>`).join("")}
       </tbody></table>` : emptyState("file", `No tests yet. Press <b>Start a new test</b> to begin.`)}
-    </section></div>`;
+    </section>
+
+    <h2 class="section-title">How it works</h2>
+    <div class="ways">
+      <div class="way"><div class="way-ico">${icon("mic")}</div><div><h3>Speak</h3><p>Instructions are read aloud. The patient answers out loud, and every answer is transcribed on this computer.</p></div></div>
+      <div class="way"><div class="way-ico sun">${icon("camera")}</div><div><h3>Show</h3><p>The cube and clock drawings are held up to the camera and photographed after a short countdown.</p></div></div>
+      <div class="way"><div class="way-ico ok">${icon("check")}</div><div><h3>Score</h3><p>Each task is scored instantly against the MoCA rules, and the full score sheet is saved with recordings.</p></div></div>
+    </div>
+  </div>`;
   wireRows();
 }
 
@@ -249,7 +259,7 @@ function trendChart(sessions) {
   const line = pts.map((p) => p.join(",")).join(" ");
   const area = `${pl},${ys(0)} ${line} ${pts[pts.length - 1][0]},${ys(0)}`;
   return `<svg class="trend" viewBox="0 0 ${W} ${H}" role="img" aria-label="MoCA score over time">
-    <defs><linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#14b8a6" stop-opacity=".25"/><stop offset="1" stop-color="#14b8a6" stop-opacity="0"/></linearGradient></defs>
+    <defs><linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b7aaf" stop-opacity=".22"/><stop offset="1" stop-color="#1b7aaf" stop-opacity="0"/></linearGradient></defs>
     ${[0, 10, 20, 30].map((v) => `<line x1="${pl}" x2="${W - pr}" y1="${ys(v)}" y2="${ys(v)}" class="grid"/><text x="${pl - 8}" y="${ys(v) + 4}" class="axis r">${v}</text>`).join("")}
     <line x1="${pl}" x2="${W - pr}" y1="${ys(26)}" y2="${ys(26)}" class="cut"/><text x="${W - pr}" y="${ys(26) - 6}" class="axis r">26 · normal</text>
     <polygon points="${area}" class="area"/>
@@ -329,7 +339,7 @@ function ring(score, max, cls) {
   const r = 70, c = 2 * Math.PI * r, f = max ? Math.max(0, Math.min(1, score / max)) : 0;
   return `<div class="ring-wrap ${cls || ""}">
     <svg class="ring" viewBox="0 0 170 170"><defs><linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#14b8a6"/><stop offset="1" stop-color="#0ea5e9"/></linearGradient></defs>
+      <stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#fff"/></linearGradient></defs>
       <circle cx="85" cy="85" r="${r}" class="ring-bg"/>
       <circle cx="85" cy="85" r="${r}" class="ring-fg" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}"/></svg>
     <div class="ring-center"><div class="total-n">${score}</div><div class="total-of">of ${max}</div></div></div>`;
