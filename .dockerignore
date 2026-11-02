@@ -1,0 +1,11 @@
+.git
+.venv
+.env
+*.db
+results
+tests
+tools
+_superseded
+__pycache__
+frontend/node_modules
+frontend/dist

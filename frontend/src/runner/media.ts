@@ -1,9 +1,18 @@
 // Voice (browser speech), microphone streaming and camera for the MoCA tasks.
 
-export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+import { accessToken } from "../lib/api";
+
+export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 // ---------------------------------------------------------------- voice
-let chosenVoice = null;
+let chosenVoice: SpeechSynthesisVoice | null = null;
+const NORMAL_RATE = 0.92, SLOW_RATE = 0.75;
+let defaultRate = NORMAL_RATE;
+
+/** The examiner's "voice speed" setting for this test. */
+export function setVoiceSpeed(speed: "normal" | "slow") {
+  defaultRate = speed === "slow" ? SLOW_RATE : NORMAL_RATE;
+}
 
 function pickVoice() {
   const voices = window.speechSynthesis ? speechSynthesis.getVoices() : [];
@@ -23,8 +32,8 @@ export function voiceAvailable() {
 }
 
 /** Speak text. Resolves when finished. onStart(time) is called when speech begins. */
-export function speak(text, { rate = 0.92, onStart } = {}) {
-  return new Promise((resolve) => {
+export function speak(text: string, { rate = defaultRate, onStart }: { rate?: number; onStart?: (ms: number) => void } = {}) {
+  return new Promise<boolean>((resolve) => {
     if (!window.speechSynthesis) return resolve(false);
     const u = new SpeechSynthesisUtterance(text);
     if (chosenVoice) u.voice = chosenVoice;
@@ -49,12 +58,10 @@ export function stopSpeaking() {
 const TARGET_RATE = 16000;
 
 class Microphone {
-  constructor() {
-    this.ctx = null;
-    this.stream = null;
-    this.listener = null;
-    this.level = 0;
-  }
+  ctx: AudioContext | null = null;
+  stream: MediaStream | null = null;
+  listener: ((chunk: Float32Array) => void) | null = null;
+  level = 0;
 
   async init() {
     if (this.ctx) return;
@@ -62,12 +69,12 @@ class Microphone {
       audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false },
     });
     this.ctx = new AudioContext();
-    await this.ctx.audioWorklet.addModule("/static/mic-worklet.js");
+    await this.ctx.audioWorklet.addModule("/mic-worklet.js");
     const src = this.ctx.createMediaStreamSource(this.stream);
     const node = new AudioWorkletNode(this.ctx, "mic-tap");
     const ratio = this.ctx.sampleRate / TARGET_RATE;
     let pos = 0;           // fractional read position into `carry`
-    let carry = new Float32Array(0);
+    let carry: Float32Array = new Float32Array(0);
     node.port.onmessage = (e) => {
       const input = e.data;
       let peak = 0;
@@ -77,7 +84,7 @@ class Microphone {
       // downsample to 16 kHz: average the input samples in each output step
       const buf = new Float32Array(carry.length + input.length);
       buf.set(carry); buf.set(input, carry.length);
-      const out = [];
+      const out: number[] = [];
       while (pos + ratio <= buf.length) {
         const a = Math.floor(pos), b = Math.floor(pos + ratio);
         let s = 0;
@@ -97,9 +104,9 @@ class Microphone {
     node.connect(mute).connect(this.ctx.destination);
   }
 
-  async start(onChunk) {
+  async start(onChunk: (chunk: Float32Array) => void) {
     await this.init();
-    if (this.ctx.state === "suspended") await this.ctx.resume();
+    if (this.ctx!.state === "suspended") await this.ctx!.resume();
     this.listener = onChunk;
   }
 
@@ -115,21 +122,28 @@ export const mic = new Microphone();
  * handlers: onHeard(text), onStatus(text), onToken(token), onReady()
  * Returns {promise, stop(), cancel()}.
  */
-export function listen(sessionId, task, step, handlers = {}) {
+export interface ListenHandlers {
+  onHeard?: (text: string) => void;
+  onStatus?: (text: string, type: string) => void;
+  onToken?: (token: string) => void;
+  onReady?: () => void;
+}
+
+export function listen(sessionId: number, task: number, step: string, handlers: ListenHandlers = {}) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${proto}://${location.host}/ws/listen`);
   ws.binaryType = "arraybuffer";
-  let pending = [];
-  let flushTimer = null;
+  let pending: Float32Array[] = [];
+  let flushTimer: ReturnType<typeof setInterval> | undefined;
   let finished = false;
 
-  const promise = new Promise((resolve, reject) => {
+  const promise = new Promise<any>((resolve, reject) => {
     const cleanup = () => {
       finished = true;
       mic.stop();
       clearInterval(flushTimer);
     };
-    ws.onopen = () => ws.send(JSON.stringify({ session_id: sessionId, task, step }));
+    ws.onopen = async () => ws.send(JSON.stringify({ token: await accessToken(), session_id: sessionId, task, step }));
     ws.onmessage = async (ev) => {
       const msg = JSON.parse(ev.data);
       if (msg.type === "ready") {
@@ -162,9 +176,9 @@ export function listen(sessionId, task, step, handlers = {}) {
 }
 
 // ---------------------------------------------------------------- camera
-let camStream = null;
+let camStream: MediaStream | null = null;
 
-export async function camera(videoEl) {
+export async function camera(videoEl: HTMLVideoElement) {
   if (!camStream || !camStream.active) {
     camStream = await navigator.mediaDevices.getUserMedia({
       video: { width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false,
@@ -183,10 +197,10 @@ export function stopCamera() {
 }
 
 /** Full-resolution still from the video as a PNG blob. */
-export function snapshot(videoEl) {
+export function snapshot(videoEl: HTMLVideoElement) {
   const c = document.createElement("canvas");
   c.width = videoEl.videoWidth;
   c.height = videoEl.videoHeight;
-  c.getContext("2d").drawImage(videoEl, 0, 0);
-  return new Promise((r) => c.toBlob(r, "image/png"));
+  c.getContext("2d")!.drawImage(videoEl, 0, 0);
+  return new Promise<Blob>((r) => c.toBlob((b) => r(b!), "image/png"));
 }

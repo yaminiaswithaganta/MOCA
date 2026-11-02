@@ -1,23 +1,48 @@
 // Runs a MoCA test in the browser: one screen per task, voice instructions,
-// microphone / camera, and the score as soon as each task is done.
+// microphone / camera. The patient sees no scores here: those go to the examiner.
+// Plain DOM rather than React: every step is timed against the voice and the
+// camera, and the flow reads top to bottom like a script.
 
-import { HandRaiseDetector } from "./hand.js";
-import { camera, listen, mic, sleep, snapshot, speak, stopCamera, stopSpeaking } from "./media.js";
-import { api, config, criteriaChips, esc, evidenceHtml, heardSummary } from "./ui.js";
+import { api, config } from "../lib/api";
+import type { PatientSession } from "../lib/types";
+import { HandRaiseDetector } from "./hand";
+import { camera, listen, mic, setVoiceSpeed, sleep, snapshot, speak, stopCamera, stopSpeaking } from "./media";
 
 class Skipped extends Error {}
+
+function esc(v: unknown) {
+  return String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+}
+
+interface StageInfo {
+  number: number;
+  title: string;
+  section: string;
+  sessionId: number;
+  index: number;
+  count: number;
+  allowSkip: boolean;
+}
 
 // ---------------------------------------------------------------- stage
 // One task's screen: header, main area, status line, buttons. Every wait goes
 // through the stage so "Skip task" can interrupt it.
 class Stage {
-  constructor(root, info) {
+  root: HTMLElement;
+  info: StageInfo;
+  cleanups: (() => void)[] = [];
+  currentListen: ReturnType<typeof listen> | null = null;
+  _skip: (e: Skipped) => void = () => {};
+  skipped: Promise<never>;
+  main: HTMLElement;
+  statusEl: HTMLElement;
+  listenBox: HTMLElement;
+  heardEl: HTMLElement;
+
+  constructor(root: HTMLElement, info: StageInfo) {
     this.root = root;
     this.info = info;
-    this.cleanups = [];
-    this.currentListen = null;
-    this._skip = null;
-    this.skipped = new Promise((_, rej) => { this._skip = rej; });
+    this.skipped = new Promise<never>((_, rej) => { this._skip = rej; });
     this.skipped.catch(() => {});
     root.innerHTML = `
       <div class="stage">
@@ -27,7 +52,7 @@ class Stage {
             <h1>${esc(info.title)}</h1>
           </div>
           <div class="stage-actions">
-            <button class="btn ghost" data-act="skip">Skip task</button>
+            <button class="btn ghost" data-act="skip" ${info.allowSkip ? "" : "hidden"}>Skip task</button>
             <button class="btn ghost" data-act="end">End test</button>
           </div>
         </div>
@@ -42,16 +67,19 @@ class Stage {
           <div class="status"></div>
         </div>
       </div>`;
-    this.main = root.querySelector(".stage-main");
-    this.statusEl = root.querySelector(".status");
-    this.listenBox = root.querySelector(".listen-box");
-    this.heardEl = root.querySelector(".heard");
-    root.querySelector('[data-act="skip"]').onclick = () => this.skip();
-    root.querySelector('[data-act="end"]').onclick = () => {
-      if (confirmInline(root, "End the test now? Tasks not done count as 0.")) this.skip("end");
+    this.main = q(root, ".stage-main");
+    this.statusEl = q(root, ".status");
+    this.listenBox = q(root, ".listen-box");
+    this.heardEl = q(root, ".heard");
+    q(root, '[data-act="skip"]').onclick = () => this.skip();
+    q(root, '[data-act="end"]').onclick = () => {
+      if (window.confirm("End the test now? Tasks not done count as 0.")) this.skip("end");
     };
-    root.querySelector('[data-act="done"]').onclick = () => this.currentListen && this.currentListen.stop();
+    q(root, '[data-act="done"]').onclick = () => { this.currentListen?.stop(); };
   }
+
+  /** A task that can't go on (no camera) must always offer a way past it. */
+  showSkip() { q(this.root, '[data-act="skip"]').hidden = false; }
 
   skip(kind = "skip") {
     stopSpeaking();
@@ -59,34 +87,35 @@ class Stage {
     this._skip(new Skipped(kind));
   }
 
-  onCleanup(fn) { this.cleanups.push(fn); }
+  onCleanup(fn: () => void) { this.cleanups.push(fn); }
   cleanup() { this.cleanups.forEach((f) => { try { f(); } catch {} }); this.cleanups = []; }
 
-  race(p) { return Promise.race([p, this.skipped]); }
-  wait(ms) { return this.race(sleep(ms)); }
+  race<T>(p: Promise<T>): Promise<T> { return Promise.race([p, this.skipped]); }
+  wait(ms: number) { return this.race(sleep(ms)); }
 
-  show(html) { this.main.innerHTML = html; }
-  status(text, kind = "") {
+  show(html: string) { this.main.innerHTML = html; }
+  status(text: string, kind = "") {
     this.statusEl.textContent = text || "";
     this.statusEl.className = "status " + kind;
   }
 
   /** Show `text` as the instruction and read it aloud. */
-  async say(text, { show = true } = {}) {
+  async say(text: string, { show = true } = {}) {
     if (show) this.status("");
     await this.race(speak(text));
   }
 
   /** Record one spoken answer for (task, step). Resolves with the server's "done" message. */
-  async listen(task, step, { onToken, label = "Listening…" } = {}) {
+  async listen(task: number, step: string, { onToken, label = "Listening…" }: { onToken?: (t: string) => void; label?: string } = {}) {
     this.heardEl.textContent = "";
-    this.listenBox.querySelector(".listen-label").textContent = "Getting ready…";
+    const labelEl = q(this.listenBox, ".listen-label");
+    labelEl.textContent = "Getting ready…";
     this.listenBox.hidden = false;
-    const meter = this.listenBox.querySelector(".mic-dot span");
+    const meter = q(this.listenBox, ".mic-dot span");
     const anim = setInterval(() => { meter.style.transform = `scale(${1 + Math.min(1.5, mic.level * 6)})`; }, 60);
-    const heard = [];
+    const heard: string[] = [];
     const h = listen(this.info.sessionId, task, step, {
-      onReady: () => { this.listenBox.querySelector(".listen-label").textContent = label; },
+      onReady: () => { labelEl.textContent = label; },
       onHeard: (t) => { heard.push(t); this.heardEl.textContent = `“${heard.join(" ")}”`; },
       onStatus: (t, type) => this.status(t, type === "reminder" ? "warn" : ""),
       onToken,
@@ -102,53 +131,51 @@ class Stage {
     }
   }
 
-  async finishSpoken(task) {
-    this.status("Scoring…");
+  async finishSpoken(task: number) {
+    this.status("Saving your answers…");
     return this.race(api(`/api/sessions/${this.info.sessionId}/tasks/${task}/finish`, { method: "POST" }));
   }
 }
 
-function confirmInline(_root, msg) {
-  return window.confirm(msg);
+function q<T extends HTMLElement = HTMLElement>(root: ParentNode, selector: string) {
+  return root.querySelector(selector) as T;
 }
 
-function big(text, sub = "") {
+function big(text: string, sub = "") {
   return `<div class="center-block"><div class="big-word">${esc(text)}</div>${sub ? `<p class="lead">${esc(sub)}</p>` : ""}</div>`;
 }
-function lead(text, extra = "") {
+function lead(text: string, extra = "") {
   return `<div class="center-block"><p class="instruction">${esc(text)}</p>${extra}</div>`;
 }
 
 // ---------------------------------------------------------------- tasks
-const FLOWS = {};
+const FLOWS: Record<number, (st: Stage, cfg: any) => Promise<unknown>> = {};
 
-// Task 1 — trail making: the path appears on the diagram while it is spoken
+// Task 1 — trail making: the path appears on the diagram while it is spoken.
+// Every step looks the same: showing right or wrong would coach the patient.
 FLOWS[1] = async (st, cfg) => {
-  const nodes = cfg.t1.nodes, correct = cfg.t1.correct;
-  const X = (x) => 40 + x * 52, Y = (y) => 40 + (10 - y) * 40;
+  const nodes: Record<string, [number, number]> = cfg.t1.nodes;
+  const X = (x: number) => 40 + x * 52, Y = (y: number) => 40 + (10 - y) * 40;
   const circles = Object.entries(nodes).map(([k, [x, y]]) =>
     `<g class="node" data-k="${k}"><circle cx="${X(x)}" cy="${Y(y)}" r="22"/><text x="${X(x)}" y="${Y(y) + 7}">${k}</text></g>`).join("");
   st.show(`<div class="trail-wrap">
       <svg class="trail" viewBox="0 0 600 480"><defs>
-        <marker id="ah-ok" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ah ok"/></marker>
-        <marker id="ah-no" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ah no"/></marker>
+        <marker id="ah-said" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ah said"/></marker>
       </defs><g class="arrows"></g>${circles}</svg>
       <p class="lead">Say the path out loud: 1 → A → 2 → … keep alternating to the end.</p></div>`);
-  const svg = st.main.querySelector("svg"), arrows = svg.querySelector(".arrows");
-  let path = [];
-  const draw = (seq) => {
+  const svg = q(st.main, "svg"), arrows = q(svg, ".arrows");
+  const path: string[] = [];
+  const draw = (seq: string[]) => {
     arrows.innerHTML = "";
-    svg.querySelectorAll(".node").forEach((n) => n.classList.remove("ok", "no"));
+    svg.querySelectorAll(".node").forEach((n) => n.classList.remove("said"));
     seq.forEach((tok, i) => {
-      const ok = tok === correct[i];
-      const n = svg.querySelector(`.node[data-k="${tok}"]`);
-      if (n) n.classList.add(ok ? "ok" : "no");
+      svg.querySelector(`.node[data-k="${tok}"]`)?.classList.add("said");
       if (i === 0 || !nodes[tok] || !nodes[seq[i - 1]]) return;
       const [x1, y1] = nodes[seq[i - 1]], [x2, y2] = nodes[tok];
       const ax = X(x1), ay = Y(y1), bx = X(x2), by = Y(y2), d = Math.hypot(bx - ax, by - ay) || 1;
       const ux = (bx - ax) / d, uy = (by - ay) / d;
       arrows.insertAdjacentHTML("beforeend",
-        `<line x1="${ax + ux * 24}" y1="${ay + uy * 24}" x2="${bx - ux * 26}" y2="${by - uy * 26}" class="${ok ? "ok" : "no"}" marker-end="url(#ah-${ok ? "ok" : "no"})"/>`);
+        `<line x1="${ax + ux * 24}" y1="${ay + uy * 24}" x2="${bx - ux * 26}" y2="${by - uy * 26}" class="said" marker-end="url(#ah-said)"/>`);
     });
   };
   await st.say(cfg.speech[1]);
@@ -161,7 +188,7 @@ FLOWS[1] = async (st, cfg) => {
 };
 
 // Tasks 2 and 3 — drawing held up to the camera, photo after a 10 s countdown
-async function photoTask(st, cfg, number) {
+async function photoTask(st: Stage, cfg: any, number: number) {
   const isCube = number === 2;
   st.show(`<div class="photo-task">
       ${isCube ? `<figure class="ref"><img src="/api/reference-cube.png" alt="Cube to copy"><figcaption>Copy this cube</figcaption></figure>` :
@@ -179,13 +206,14 @@ async function photoTask(st, cfg, number) {
       <button class="btn" data-act="retake" hidden>Retake</button>
       <span class="hint">Space bar also starts the countdown.</span>
     </div>`);
-  const video = st.main.querySelector("video"), still = st.main.querySelector(".still");
-  const cd = st.main.querySelector(".countdown");
-  const btn = (a) => st.main.querySelector(`[data-act="${a}"]`);
+  const video = q<HTMLVideoElement>(st.main, "video"), still = q<HTMLImageElement>(st.main, ".still");
+  const cd = q(st.main, ".countdown");
+  const btn = (a: string) => q<HTMLButtonElement>(st.main, `[data-act="${a}"]`);
   try {
     await camera(video);
   } catch (e) {
-    st.status("Camera not available: " + e.message, "error");
+    st.status("Camera not available: " + (e as Error).message, "error");
+    st.showSkip();
     await st.skipped;
   }
   st.onCleanup(stopCamera);
@@ -193,10 +221,10 @@ async function photoTask(st, cfg, number) {
 
   for (;;) {
     // wait for the countdown or "take photo now"
-    const how = await st.race(new Promise((resolve) => {
+    const how = await st.race(new Promise<string>((resolve) => {
       btn("count").onclick = () => resolve("count");
       btn("now").onclick = () => resolve("now");
-      const key = (e) => { if (e.code === "Space") { e.preventDefault(); document.removeEventListener("keydown", key); resolve("count"); } };
+      const key = (e: KeyboardEvent) => { if (e.code === "Space") { e.preventDefault(); document.removeEventListener("keydown", key); resolve("count"); } };
       document.addEventListener("keydown", key);
       st.onCleanup(() => document.removeEventListener("keydown", key));
     }));
@@ -204,7 +232,7 @@ async function photoTask(st, cfg, number) {
     if (how === "count") {
       speak("Hold the drawing still.");
       cd.hidden = false;
-      for (let s = 10; s > 0; s--) { cd.textContent = s; await st.wait(1000); }
+      for (let s = 10; s > 0; s--) { cd.textContent = String(s); await st.wait(1000); }
       cd.hidden = true;
     }
     const blob = await snapshot(video);
@@ -212,13 +240,13 @@ async function photoTask(st, cfg, number) {
     still.hidden = false;
     btn("count").hidden = btn("now").hidden = true;
     btn("use").hidden = btn("retake").hidden = false;
-    const choice = await st.race(new Promise((resolve) => {
+    const choice = await st.race(new Promise<string>((resolve) => {
       btn("use").onclick = () => resolve("use");
       btn("retake").onclick = () => resolve("retake");
     }));
     if (choice === "use") {
       btn("use").disabled = btn("retake").disabled = true;
-      st.status("Scoring the drawing…");
+      st.status("Saving your drawing…");
       const fd = new FormData();
       fd.append("file", blob, "capture.png");
       return st.race(api(`/api/sessions/${st.info.sessionId}/tasks/${number}/photo`, { method: "POST", form: fd }));
@@ -295,7 +323,7 @@ FLOWS[6] = async (st, cfg) => {
   return st.finishSpoken(6);
 };
 
-// Task 7 — raise a hand at every A (camera), or the examiner presses Space
+// Task 7 — raise a hand at every A (camera), or press Space if the camera can't see it
 FLOWS[7] = async (st, cfg) => {
   const { letters, interval_s } = cfg.t7;
   const sp = cfg.speech[7];
@@ -304,16 +332,17 @@ FLOWS[7] = async (st, cfg) => {
       <div class="letters-side"><p class="instruction"></p><div class="big-letter"></div>
         <button class="btn primary big-btn" data-act="raise" hidden>Hand raised (Space)</button></div>
     </div>`);
-  const video = st.main.querySelector("video"), flag = st.main.querySelector(".hand-flag");
-  const instr = st.main.querySelector(".instruction"), raiseBtn = st.main.querySelector('[data-act="raise"]');
-  let mode = "camera", det = null, calibration = {};
+  const video = q<HTMLVideoElement>(st.main, "video"), flag = q(st.main, ".hand-flag");
+  const instr = q(st.main, ".instruction"), raiseBtn = q(st.main, '[data-act="raise"]');
+  let mode = "camera", calibration: any = {};
+  let det: HandRaiseDetector | null = null;
   try {
     await camera(video);
     await sleep(500);
     det = new HandRaiseDetector(video);
   } catch (e) {
     mode = "keyboard";
-    calibration = { reason: "camera could not be opened: " + e.message };
+    calibration = { reason: "camera could not be opened: " + (e as Error).message };
   }
   st.onCleanup(stopCamera);
 
@@ -323,16 +352,16 @@ FLOWS[7] = async (st, cfg) => {
       instr.textContent = attempt ? sp.retry : sp.sit;
       await st.say(attempt ? sp.retry : sp.sit);
       if (attempt) await st.say(sp.sit);
-      const res = await st.race(det.calibrate());
+      const res = await st.race(det!.calibrate());
       ok = res.ok;
       calibration = res.info;
     }
     if (!ok) mode = "keyboard";
   }
   if (mode === "keyboard") {
-    st.main.querySelector(".cam").hidden = true;
-    instr.textContent = "Examiner: press Space (or the button) every time the patient raises their hand.";
-    st.status("The camera cannot see the hand clearly — examiner mode.", "warn");
+    q(st.main, ".cam").hidden = true;
+    instr.textContent = "Press Space (or the button) every time you hear the letter A.";
+    st.status("The camera cannot see your hand clearly, so please use the button.", "warn");
     await st.wait(3000);
   }
   raiseBtn.hidden = false;
@@ -341,18 +370,18 @@ FLOWS[7] = async (st, cfg) => {
   await st.wait(1000);
   instr.textContent = "Listen… raise your hand at every A.";
 
-  const letterTimes = [], raiseTimes = [], upSamples = [], trace = [];
+  const letterTimes: number[] = [], raiseTimes: number[] = [], upSamples: number[][] = [], trace: number[][] = [];
   const t = () => performance.now() / 1000;
   const start = t() + 0.5;
   const manual = () => raiseTimes.push(t() - start);
   raiseBtn.onclick = manual;
-  const key = (e) => { if (e.code === "Space") { e.preventDefault(); manual(); } };
+  const key = (e: KeyboardEvent) => { if (e.code === "Space") { e.preventDefault(); manual(); } };
   document.addEventListener("keydown", key);
   st.onCleanup(() => document.removeEventListener("keydown", key));
 
   let prevUp = false, i = 0;
   const end = start + letters.length * interval_s + 0.5;
-  const bigLetter = st.main.querySelector(".big-letter");
+  const bigLetter = q(st.main, ".big-letter");
   while (t() < end) {
     if (i < letters.length && t() >= start + i * interval_s) {
       const k = i;
@@ -362,9 +391,9 @@ FLOWS[7] = async (st, cfg) => {
       i++;
     }
     if (mode === "camera") {
-      const f = det.read();
+      const f = det!.read();
       if (f) {
-        const { up, value } = det.update(f);
+        const { up, value } = det!.update(f);
         const ts = t() - start;
         upSamples.push([ts, up ? 1 : 0]);
         trace.push([+ts.toFixed(2), +value.toFixed(4), up ? 1 : 0]);
@@ -376,7 +405,7 @@ FLOWS[7] = async (st, cfg) => {
     }
     await st.wait(40);
   }
-  st.status("Scoring…");
+  st.status("Saving your answers…");
   return st.race(api(`/api/sessions/${st.info.sessionId}/tasks/7/letters`, {
     method: "POST",
     body: { letter_times: letterTimes, raise_times: raiseTimes.sort((a, b) => a - b),
@@ -417,9 +446,9 @@ FLOWS[10] = async (st, cfg) => {
   await st.say(cfg.t10.instruction);
   st.show(`<div class="center-block"><div class="big-word">F</div><div class="timer">${cfg.t10.seconds}</div>
            <p class="lead">Say as many words starting with F as you can.</p></div>`);
-  const timer = st.main.querySelector(".timer");
+  const timer = q(st.main, ".timer");
   const t0 = performance.now();
-  const iv = setInterval(() => { timer.textContent = Math.max(0, Math.ceil(cfg.t10.seconds - (performance.now() - t0) / 1000)); }, 250);
+  const iv = setInterval(() => { timer.textContent = String(Math.max(0, Math.ceil(cfg.t10.seconds - (performance.now() - t0) / 1000))); }, 250);
   st.onCleanup(() => clearInterval(iv));
   try {
     await st.listen(10, "fluency", { label: "Listening — one minute" });
@@ -463,76 +492,79 @@ FLOWS[13] = async (st, cfg) => {
   return st.finishSpoken(13);
 };
 
-// ---------------------------------------------------------------- result card
-export function resultCardHtml(r, title) {
-  const scored = r.max_score > 0;
-  const tone = !r.completed ? "skipped" : !scored ? "" : r.score === r.max_score ? "full" : r.score === 0 ? "zero" : "";
-  return `<div class="result-card ${tone}">
-      <div class="result-top">
-        <div><div class="eyebrow">${esc(title)}</div>
-          <div class="score-big">${scored ? `${r.score}<span>/ ${r.max_score}</span>` : "Recorded"}</div></div>
-        ${!r.completed ? `<span class="tag warn">Not completed</span>` : ""}
-      </div>
-      ${criteriaChips(r.criteria)}
-      <p class="reason">${esc(r.reason)}</p>
-      <div class="heard-summary">${heardSummary(r)}</div>
-      ${evidenceHtml(r)}
-    </div>`;
-}
-
 // ---------------------------------------------------------------- the test
-let activeStage = null;
+let activeStage: Stage | null = null;
 let abandoned = false;
 
-/** Leaving the test page: stop the task in progress (it is not scored). */
+/** Leaving the test page: stop the task in progress (it is not saved). */
 export function abortTest() {
   abandoned = true;
   if (activeStage) activeStage.skip("abandon");
+  stopSpeaking();
+  stopCamera();
 }
 
-export async function runTest(root, sessionId, navigate) {
+function waitForClick(button: HTMLElement) {
+  button.focus();
+  return new Promise<void>((r) => { button.onclick = () => r(); });
+}
+
+export async function runTest(root: HTMLElement, sessionId: number, onFinished: () => void) {
   abandoned = false;
   const cfg = await config();
-  const session = await api(`/api/sessions/${sessionId}`);
-  const byNum = Object.fromEntries(cfg.tasks.map((t) => [t.number, t]));
+  const session = await api<PatientSession>(`/api/sessions/${sessionId}`);
+  if (session.stage !== "in_progress") return onFinished();
+  const byNum: Record<number, any> = Object.fromEntries(cfg.tasks.map((t: any) => [t.number, t]));
   const todo = session.tasks.filter((n) => !session.done_tasks.includes(n));
+  setVoiceSpeed(session.settings.voice_speed ?? "normal");
+
+  if (session.settings.intro && session.done_tasks.length === 0) {
+    root.innerHTML = `<div class="after-task"><div class="card">
+        <div class="eyebrow">From your examiner</div>
+        <p class="intro-text">${esc(session.settings.intro)}</p>
+        <div class="row-end"><button class="btn primary" data-act="go">Continue</button></div></div></div>`;
+    await waitForClick(q(root, '[data-act="go"]'));
+    if (abandoned) return;
+  }
 
   // microphone permission up front, so the first task doesn't stall
   root.innerHTML = `<div class="center-block pad"><h1>Getting ready</h1><p class="lead">Allow the microphone${session.tasks.some((n) => byNum[n].camera) ? " and camera" : ""} when the browser asks.</p><div class="spinner"></div></div>`;
   try { await mic.init(); } catch (e) {
-    root.innerHTML = `<div class="center-block pad"><h1>Microphone needed</h1><p class="lead">${esc(e.message)}</p><p>Allow microphone access for this page in the browser settings, then reload.</p></div>`;
+    root.innerHTML = `<div class="center-block pad"><h1>Microphone needed</h1><p class="lead">${esc((e as Error).message)}</p><p>Allow microphone access for this page in the browser settings, then reload.</p></div>`;
     return;
   }
   for (;;) {
     const st = await api("/api/status");
+    if (abandoned) return;
     if (st.speech_ready) break;
     if (st.speech_error) {
-      root.innerHTML = `<div class="center-block pad"><h1>Speech recogniser failed</h1><p>${esc(st.speech_error)}</p></div>`;
+      root.innerHTML = `<div class="center-block pad"><h1>The test can't start right now</h1><p>Please try again later. Your progress is saved.</p></div>`;
       return;
     }
-    root.innerHTML = `<div class="center-block pad"><h1>Loading the speech recogniser…</h1><p class="lead">The first time, this downloads the model (a few hundred MB). After that it starts in seconds.</p><div class="spinner"></div></div>`;
+    root.innerHTML = `<div class="center-block pad"><h1>Getting ready…</h1><p class="lead">This usually takes a few seconds.</p><div class="spinner"></div></div>`;
     await sleep(1500);
   }
 
   for (let k = 0; k < todo.length; k++) {
     const n = todo[k];
-    const info = { ...byNum[n], sessionId, index: session.tasks.indexOf(n) + 1, count: session.tasks.length };
+    const info: StageInfo = { ...byNum[n], sessionId, index: session.tasks.indexOf(n) + 1, count: session.tasks.length,
+                              allowSkip: session.settings.allow_skip !== false };
     if (abandoned) return;
     const stage = new Stage(root, info);
     activeStage = stage;
-    let result = null, ended = false;
+    let ended = false;
     try {
-      result = await FLOWS[n](stage, cfg);
+      await FLOWS[n](stage, cfg);
     } catch (e) {
       if (e instanceof Skipped && e.message === "abandon") return;
       if (e instanceof Skipped) {
         ended = e.message === "end";
-        result = await api(`/api/sessions/${sessionId}/tasks/${n}/skip`, { method: "POST" });
+        await api(`/api/sessions/${sessionId}/tasks/${n}/skip`, { method: "POST" });
       } else {
         stage.cleanup();
-        const again = await showError(root, info, e);
+        const again = await showError(root, info, e as Error);
         if (again === "retry") { k--; continue; }
-        result = await api(`/api/sessions/${sessionId}/tasks/${n}/skip`, { method: "POST" });
+        await api(`/api/sessions/${sessionId}/tasks/${n}/skip`, { method: "POST" });
       }
     } finally {
       activeStage = null;
@@ -541,28 +573,28 @@ export async function runTest(root, sessionId, navigate) {
     }
     if (ended) break;
     const last = k === todo.length - 1;
-    root.innerHTML = `<div class="after-task">${resultCardHtml(result, `Task ${n} · ${info.title}`)}
-        <div class="row-end"><button class="btn primary" data-act="next">${last ? "See final score" : "Next task →"}</button></div></div>`;
     if (abandoned) return;
-    await new Promise((r) => {
-      const b = root.querySelector('[data-act="next"]');
-      b.focus();
-      b.onclick = r;
-    });
+    root.innerHTML = `<div class="after-task"><div class="card center-block saved-card">
+        <div class="saved-tick">✓</div>
+        <h2>${esc(info.title)} is done</h2>
+        <p class="muted">Your answers are saved. ${last ? "That was the last task." : `Task ${info.index} of ${info.count}.`}</p>
+        <div class="row-center"><button class="btn primary" data-act="next">${last ? "Finish" : "Next task →"}</button></div></div></div>`;
+    await waitForClick(q(root, '[data-act="next"]'));
+    if (abandoned) return;
   }
-  root.innerHTML = `<div class="center-block pad"><h1>Adding up the score…</h1><div class="spinner"></div></div>`;
+  root.innerHTML = `<div class="center-block pad"><h1>Finishing up…</h1><div class="spinner"></div></div>`;
   await api(`/api/sessions/${sessionId}/finish`, { method: "POST" });
   stopCamera();
-  navigate(`#/session/${sessionId}`);
+  onFinished();
 }
 
-function showError(root, info, e) {
+function showError(root: HTMLElement, info: StageInfo, e: Error) {
   root.innerHTML = `<div class="center-block pad"><h1>Something went wrong</h1>
       <p class="lead">Task ${info.number} · ${esc(info.title)}</p><p class="error-text">${esc(e.message)}</p>
       <div class="row-center"><button class="btn primary" data-act="retry">Try this task again</button>
       <button class="btn" data-act="skip">Skip it (counts as 0)</button></div></div>`;
-  return new Promise((r) => {
-    root.querySelector('[data-act="retry"]').onclick = () => r("retry");
-    root.querySelector('[data-act="skip"]').onclick = () => r("skip");
+  return new Promise<string>((r) => {
+    q(root, '[data-act="retry"]').onclick = () => r("retry");
+    q(root, '[data-act="skip"]').onclick = () => r("skip");
   });
 }

@@ -15,3 +15,11 @@ tests/real_photos/
 .DS_Store
 .vscode/
 server.log
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Local settings and databases
+.env
+*.db

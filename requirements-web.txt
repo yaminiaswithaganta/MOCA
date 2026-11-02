@@ -4,3 +4,8 @@ fastapi
 uvicorn[standard]
 sqlalchemy
 python-multipart
+alembic
+psycopg[binary]
+pyjwt[crypto]
+python-dotenv
+httpx

@@ -3,11 +3,12 @@
 // compare each camera frame with a "hands down" picture in the areas beside /
 // above the head; thresholds come from one practice raise.
 
-import { sleep, speak } from "./media.js";
+import { api } from "../lib/api";
+import { sleep, speak } from "./media";
 
 const now = () => performance.now() / 1000;
 
-function percentile(values, p) {
+function percentile(values: number[], p: number) {
   const s = Float64Array.from(values).sort();
   if (!s.length) return 0;
   const idx = (s.length - 1) * (p / 100);
@@ -15,7 +16,7 @@ function percentile(values, p) {
   return s[lo] + (s[hi] - s[lo]) * (idx - lo);
 }
 
-function boxBlur(src, w, h, ch) {
+function boxBlur(src: Float32Array, w: number, h: number, ch: number) {
   // 5-wide box blur, horizontal then vertical (stands in for the 5x5 Gaussian)
   const tmp = new Float32Array(src.length), out = new Float32Array(src.length);
   for (let y = 0; y < h; y++)
@@ -41,15 +42,35 @@ function boxBlur(src, w, h, ch) {
   return out;
 }
 
+interface Frame {
+  gray: Float32Array;
+  rgb: Float32Array;
+}
+
 export class HandRaiseDetector {
-  constructor(video, width = 320) {
+  video: HTMLVideoElement;
+  w: number;
+  h: number;
+  canvas: HTMLCanvasElement;
+  cx: CanvasRenderingContext2D;
+  base: Float32Array | null;
+  baseSkin: Uint8Array | null;
+  zone: Uint8Array | null;
+  face: number[] | null;
+  thrUp: number | null;
+  thrDown: number | null;
+  up: boolean;
+  streak: number;
+  mode: string;
+
+  constructor(video: HTMLVideoElement, width = 320) {
     this.video = video;
     this.w = width;
     this.h = Math.round((video.videoHeight * width) / video.videoWidth) || 240;
     this.canvas = document.createElement("canvas");
     this.canvas.width = this.w;
     this.canvas.height = this.h;
-    this.cx = this.canvas.getContext("2d", { willReadFrequently: true });
+    this.cx = this.canvas.getContext("2d", { willReadFrequently: true })!;
     this.base = null;
     this.baseSkin = null;
     this.zone = null;
@@ -61,7 +82,7 @@ export class HandRaiseDetector {
   }
 
   /** Current frame, mirrored and blurred: {gray, rgb} or null. */
-  read() {
+  read(): Frame | null {
     if (this.video.readyState < 2) return null;
     const { w, h, cx } = this;
     cx.save();
@@ -80,7 +101,7 @@ export class HandRaiseDetector {
     return { gray, rgb };
   }
 
-  skinMask(rgb) {
+  skinMask(rgb: Float32Array) {
     // YCrCb skin range, as in task7_letters.py
     const n = this.w * this.h, m = new Uint8Array(n);
     for (let i = 0, j = 0; i < n; i++, j += 3) {
@@ -93,18 +114,17 @@ export class HandRaiseDetector {
   }
 
   async findFace() {
-    const blob = await new Promise((r) => this.canvas.toBlob(r, "image/jpeg", 0.85));
+    const blob = await new Promise<Blob>((r) => this.canvas.toBlob((b) => r(b!), "image/jpeg", 0.85));
     const fd = new FormData();
     fd.append("file", blob, "frame.jpg");
     try {
-      const res = await fetch("/api/face", { method: "POST", body: fd });
-      return (await res.json()).face;
+      return (await api("/api/face", { method: "POST", form: fd })).face;
     } catch {
       return null;
     }
   }
 
-  makeZone(face) {
+  makeZone(face: number[] | null) {
     const { w, h } = this, zone = new Uint8Array(w * h);
     if (face) {
       const [fx, fy, fw, fh] = face;
@@ -122,8 +142,8 @@ export class HandRaiseDetector {
   }
 
   /** [brightness-change fraction, new-skin fraction] of the raise zone. */
-  features(f) {
-    const { zone, base, baseSkin } = this;
+  features(f: Frame): number[] {
+    const zone = this.zone!, base = this.base!, baseSkin = this.baseSkin!;
     const skin = this.skinMask(f.rgb);
     let n = 0, changed = 0, newSkin = 0;
     for (let i = 0; i < zone.length; i++) {
@@ -136,8 +156,8 @@ export class HandRaiseDetector {
   }
 
   /** Hands-down picture, then one practice raise. Returns {ok, info}. */
-  async calibrate(onFrame) {
-    const frames = [];
+  async calibrate(onFrame?: (v: number | null) => void): Promise<{ ok: boolean; info: any }> {
+    const frames: Frame[] = [];
     let t0 = now();
     while (now() - t0 < 2.5) {
       const f = this.read();
@@ -165,7 +185,7 @@ export class HandRaiseDetector {
     const restLevel = [0, 1].map((k) => percentile(restF.map((v) => v[k]), 95));
 
     speak("Now raise your hand, and hold it up.");
-    const vals = [];
+    const vals: number[][] = [];
     t0 = now();
     while (now() - t0 < 3.5) {
       const f = this.read();
@@ -182,7 +202,7 @@ export class HandRaiseDetector {
     const idx = gap[1] > gap[0] ? 1 : 0;
     this.mode = ["changed", "skin"][idx];
     const b = restLevel[idx], p = raised[idx];
-    const info = { signal: this.mode, rest_level: +b.toFixed(4), raised_level: +p.toFixed(4),
+    const info: any = { signal: this.mode, rest_level: +b.toFixed(4), raised_level: +p.toFixed(4),
                    face_found: !!this.face };
     if (p < Math.max(2.5 * b, b + 0.03)) return { ok: false, info };
     this.thrUp = b + 0.4 * (p - b);
@@ -192,16 +212,17 @@ export class HandRaiseDetector {
   }
 
   /** Hand up / down with hysteresis (2 frames in a row to change). */
-  update(f) {
+  update(f: Frame) {
     const feat = this.features(f);
     const v = this.mode === "skin" ? feat[1] : feat[0];
-    const want = this.up ? v > this.thrDown : v > this.thrUp;
+    const want = this.up ? v > this.thrDown! : v > this.thrUp!;
     if (want !== this.up) {
       if (++this.streak >= 2) { this.up = want; this.streak = 0; }
     } else {
       this.streak = 0;
       if (!this.up) {                      // slowly follow light changes while the hand is down
-        for (let i = 0; i < this.base.length; i++) this.base[i] = 0.97 * this.base[i] + 0.03 * f.gray[i];
+        const base = this.base!;
+        for (let i = 0; i < base.length; i++) base[i] = 0.97 * base[i] + 0.03 * f.gray[i];
       }
     }
     return { up: this.up, value: v };

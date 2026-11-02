@@ -39,6 +39,28 @@ if [ ! -f .venv/.installed ] || [ requirements-web.txt -nt .venv/.installed ]; t
   touch .venv/.installed
 fi
 
+if [ ! -f .env ]; then
+  echo "The app needs its settings first: copy .env.example to .env and fill it in."
+  echo "README.md section 1 explains where each value comes from."
+  read -r -p "Press Enter to close."
+  exit 1
+fi
+
+# Build the screens when they have changed (needs Node.js 20 or newer)
+if [ ! -f frontend/dist/index.html ] || [ -n "$(find frontend/src frontend/index.html frontend/package.json -newer frontend/dist/index.html 2>/dev/null | head -1)" ]; then
+  if ! command -v npm >/dev/null 2>&1; then
+    echo "Node.js is needed to build the app. Install it from https://nodejs.org and try again."
+    read -r -p "Press Enter to close."
+    exit 1
+  fi
+  echo "Building the app..."
+  ( cd frontend && npm ci && npm run build ) || {
+    echo "Building failed."
+    read -r -p "Press Enter to close."
+    exit 1
+  }
+fi
+
 echo "Starting the MoCA app at $URL"
 echo "Keep this window open while you use the app. Close it to stop the app."
 ( sleep 3; open "$URL" ) &
