@@ -3,9 +3,11 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router";
 import { Brand } from "../../components/Layout";
-import { FormError, Icon, Spinner } from "../../components/ui";
+import { FormError, Icon, PasswordInput, Spinner } from "../../components/ui";
 import { useAuth } from "../../lib/auth";
 import { publicConfig, supabase } from "../../lib/supabase";
+
+const SAMPLE_AREAS: [string, string, string][] = [["Visuospatial", "#1b7aaf", "80%"], ["Attention", "#f5b841", "67%"], ["Language", "#22a699", "100%"], ["Orientation", "#5bb8e6", "83%"]];
 
 export function AuthShell({ children }: { children: ReactNode }) {
   return (
@@ -13,12 +15,25 @@ export function AuthShell({ children }: { children: ReactNode }) {
       <aside className="auth-side">
         <Brand to="/" />
         <div className="auth-pitch">
-          <h1>Cognitive screening, reviewed by a real examiner.</h1>
-          <p>The Montreal Cognitive Assessment by voice and camera, from wherever you are.</p>
+          <div>
+            <h1>Cognitive screening, <span className="grad-text">made human.</span></h1>
+            <p>Take the Montreal Cognitive Assessment by voice and camera, then get your result from a real examiner.</p>
+          </div>
+          <div className="auth-show" aria-hidden="true">
+            <div className="auth-panel">
+              <div className="eyebrow">Example result</div>
+              <div className="auth-bars">
+                {SAMPLE_AREAS.map(([name, c, w]) => (
+                  <div className="auth-bar" key={name}><span>{name}</span><i style={{ "--c": c, "--w": w } as React.CSSProperties} /></div>
+                ))}
+              </div>
+            </div>
+            <div className="float-card b"><span className="float-ico"><Icon name="check" /></span><span><b>Reviewed</b><small>by your examiner</small></span></div>
+          </div>
           <ul className="auth-points">
-            <li><Icon name="mic" /> Instructions read aloud, answers spoken</li>
-            <li><Icon name="shield" /> Every result checked before it's shared</li>
-            <li><Icon name="check" /> Private to you and your examiner</li>
+            <li><Icon name="mic" /> Answer by voice</li>
+            <li><Icon name="shield" /> Checked by an examiner</li>
+            <li><Icon name="check" /> Private to you</li>
           </ul>
         </div>
       </aside>
@@ -72,10 +87,11 @@ export function Login() {
   return (
     <AuthShell>
       <h2>Welcome back</h2>
+      <p className="muted" style={{ margin: 0 }}>Sign in to your tests and results.</p>
       <GoogleButton />
       <form onSubmit={submit}>
         <label>Email<input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} /></label>
-        <label>Password<input type="password" required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+        <label>Password<PasswordInput autoComplete="current-password" value={password} onChange={setPassword} /></label>
         <FormError error={error} />
         <button className="btn primary" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
       </form>
@@ -127,7 +143,7 @@ export function Signup() {
       <GoogleButton />
       <form onSubmit={submit}>
         <label>Email<input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} /></label>
-        <label>Password<input type="password" required minLength={MIN_PASSWORD} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+        <label>Password<PasswordInput minLength={MIN_PASSWORD} autoComplete="new-password" value={password} onChange={setPassword} /></label>
         <FormError error={error} />
         <button className="btn primary" disabled={busy}>{busy ? "Creating…" : "Create account"}</button>
       </form>
@@ -188,7 +204,7 @@ export function ResetPassword() {
       {session
         ? (
           <form onSubmit={submit}>
-            <label>New password<input type="password" required minLength={MIN_PASSWORD} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+            <label>New password<PasswordInput minLength={MIN_PASSWORD} autoComplete="new-password" value={password} onChange={setPassword} /></label>
             <FormError error={error} />
             <button className="btn primary">Save password</button>
           </form>

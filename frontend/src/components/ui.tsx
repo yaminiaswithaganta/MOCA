@@ -36,6 +36,8 @@ const ICONS: Record<string, string> = {
   signout: '<path d="M10 4H5v16h5M15 8l4 4-4 4M19 12H10"/>',
   more: '<circle cx="5.5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="18.5" cy="12" r="1.2"/>',
   mail: '<rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="m3.5 7 8.5 6 8.5-6"/>',
+  eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
+  eyeoff: '<path d="M4 4l16 16M10 5.800A9.7 9.7 0 0 1 12 5.500C18 5.5 21.5 12 21.5 12a17 17 0 0 1-3.2 4M6.2 7.500A16.8 16.8 0 0 0 2.5 12S6 18.5 12 18.500c1.3 0 2.5-.3 3.6-.8"/>',
   ban: '<circle cx="12" cy="12" r="9"/><path d="M5.7 5.700l12.6 12.6"/>',
   shield: '<path d="M12 3l8 3v6c0 4.6-3.2 7.7-8 9-4.8-1.3-8-4.4-8-9V6z"/><path d="m8.5 12 2.5 2.5 4.5-5"/>',
 };
@@ -49,7 +51,7 @@ export function Avatar({ name, large = false }: { name: string; large?: boolean 
   const initials = (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
   let h = 0;
   for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360;
-  return <span className={`avatar ${large ? "lg" : ""}`} style={{ "--h": h } as React.CSSProperties}>{initials}</span>;
+  return <span className={`avatar ${large ? "lg" : ""}`} style={{ "--h": 185 + (h % 40) } as React.CSSProperties}>{initials}</span>;
 }
 
 export const Spinner = () => <div className="loading" role="status" aria-label="Loading"><div className="spinner" /></div>;
@@ -133,12 +135,22 @@ export function Logo() {
   return (
     <span className="logo">
       <svg viewBox="0 0 40 40" aria-hidden="true">
-        <defs><linearGradient id="logoBg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#2a8cc4" /><stop offset="1" stopColor="#0d4466" /></linearGradient></defs>
+        <defs><linearGradient id="logoBg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#1b7aaf" /><stop offset="1" stopColor="#0d4466" /></linearGradient></defs>
         <rect width="40" height="40" rx="12" fill="url(#logoBg)" />
         <polyline points="10,29 14,12 20,23 26,12 30,29" fill="none" stroke="#fff" strokeOpacity=".9" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
         <circle cx="10" cy="29" r="2.9" fill="#fff" /><circle cx="14" cy="12" r="2.9" fill="#fff" /><circle cx="20" cy="23" r="2.9" fill="#fff" />
         <circle cx="26" cy="12" r="2.9" fill="#fff" /><circle cx="30" cy="29" r="3.6" fill="#f5b841" />
       </svg>
+    </span>
+  );
+}
+
+export function PasswordInput({ value, onChange, autoComplete, minLength }: { value: string; onChange: (v: string) => void; autoComplete: string; minLength?: number }) {
+  const [shown, setShown] = useState(false);
+  return (
+    <span className="pw">
+      <input type={shown ? "text" : "password"} required minLength={minLength} autoComplete={autoComplete} value={value} onChange={(e) => onChange(e.target.value)} />
+      <button type="button" aria-label={shown ? "Hide typed text" : "Show typed text"} onClick={() => setShown(!shown)}><Icon name={shown ? "eyeoff" : "eye"} /></button>
     </span>
   );
 }
