@@ -1,9 +1,10 @@
 MoCA app: how to start
 ======================
 
-EASIEST WAY: open this folder in VS Code, start Claude Code (or Codex) in the
-terminal, and paste in everything from the file SETUP_FOR_AI.md. The AI installs
-and starts everything, then gives you a link to open.
+EASIEST WAY: open this folder in Claude Code (or another AI coding assistant) and
+say: "Read SETUP_FOR_AI.md and walk me through it." It sets everything up, connects
+Supabase, creates your admin account and can put the app online, telling you the
+few things only you need to click.
 
 Or do it yourself:
 

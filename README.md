@@ -33,8 +33,9 @@ file storage. Speech recognition (Whisper) runs on your own server, not a third-
 
 ### Option A: let an AI assistant set it up (easiest)
 
-Open this folder in VS Code, start Claude Code or Codex in the terminal, and paste in everything from
-[`SETUP_FOR_AI.md`](SETUP_FOR_AI.md).
+Open this folder in Claude Code (or another AI coding assistant) and say: *"Read SETUP_FOR_AI.md and walk me
+through it."* [`SETUP_FOR_AI.md`](SETUP_FOR_AI.md) covers setup on a computer, connecting Supabase, creating the
+admin and deploying online.
 
 ### Option B: by hand
 
