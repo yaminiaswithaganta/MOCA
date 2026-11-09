@@ -394,7 +394,7 @@ SPEECH = {
         "Include all edges and make it look like the picture. Then hold your drawing up to the camera, "
         "with the whole cube in view."),
     3: ("Draw a clock. First, draw a large circle. Then write all 12 numbers in their correct positions "
-        "around the circle. Finally, draw two hands to show the time ten past eleven, or eleven ten. "
+        "around the circle. Finally, draw two hands to show the time ten past eleven. "
         "Then hold the clock up to the camera. Hold it straight, not tilted, and not upside down, "
         "with the whole clock in view."),
     4: ("I will show you three pictures of animals, one at a time. For each picture, "

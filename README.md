@@ -150,6 +150,8 @@ Admins can't see scores, transcripts or recordings, only how many tests an accou
 
 ### During a test
 
+- The test opens with a **Start** button, including when a patient comes back to finish it. Browsers block the voice and microphone until the page is clicked, so this makes sure answers aren't recorded as silence.
+- The clock task asks for "ten past eleven" in words only; patient screens never show a clock time.
 - **Done answering** ends an answer early. **Skip task** (if the design allows) counts as 0 and is marked not
   completed. **End test** finishes now; remaining tasks count as 0.
 - If a task hits an error, the patient can retry it or skip it.
@@ -507,8 +509,9 @@ hand-raise detector on synthetic video.
   optional test-only models (see the file).
 - `TestRealPhotos` needs webcam photos in `tests/real_photos/`, which are not included in the repo
   (they show a real person). It fails without them.
-- **Known:** 4 clock tests currently fail on the "numbers" criterion for synthetic clocks
-  (`TestTask3Clock`). Real clock photos score correctly.
+- **Known:** 1 clock test fails: a synthetic clock with an extra "13" still gets the "numbers" point
+  (`TestTask3Clock.test_cases`). With OpenCV 5, 3 more clock tests fail, which is why `requirements.txt`
+  keeps OpenCV below 5.
 
 ---
 

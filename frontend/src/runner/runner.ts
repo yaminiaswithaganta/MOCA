@@ -192,7 +192,7 @@ async function photoTask(st: Stage, cfg: any, number: number) {
   const isCube = number === 2;
   st.show(`<div class="photo-task">
       ${isCube ? `<figure class="ref"><img src="/api/reference-cube.png" alt="Cube to copy"><figcaption>Copy this cube</figcaption></figure>` :
-                 `<div class="ref clock-ref"><div class="clock-time">11:10</div><p>Draw a clock with all the numbers.<br>Set the hands to <b>ten past eleven</b>.</p></div>`}
+                 `<div class="ref clock-ref"><p class="clock-say">Draw a clock with all the numbers.<br>Set the hands to <b>ten past eleven</b>.</p></div>`}
       <div class="cam">
         <video autoplay muted playsinline></video>
         <div class="countdown" hidden></div>
@@ -544,6 +544,19 @@ export async function runTest(root: HTMLElement, sessionId: number, onFinished: 
     root.innerHTML = `<div class="center-block pad"><h1>Getting ready…</h1><p class="lead">This usually takes a few seconds.</p><div class="spinner"></div></div>`;
     await sleep(1500);
   }
+
+  // Browsers block the voice and the microphone until the page is clicked, and a test
+  // opened from a link or reloaded half-way has had no click yet: without this the
+  // answers would arrive as silence.
+  const first = byNum[todo[0]];
+  root.innerHTML = `<div class="after-task"><div class="card center-block saved-card">
+      <div class="eyebrow">${session.done_tasks.length ? "Welcome back" : "Ready when you are"}</div>
+      <h2>${session.done_tasks.length ? `${todo.length} task${todo.length === 1 ? "" : "s"} left` : "Let's begin"}</h2>
+      <p class="muted">First: ${esc(first.title)}. Instructions will be read aloud, so turn your sound on.</p>
+      <div class="row-center"><button class="btn primary lg" data-act="start">Start</button></div></div></div>`;
+  await waitForClick(q(root, '[data-act="start"]'));
+  if (abandoned) return;
+  await mic.resume();
 
   for (let k = 0; k < todo.length; k++) {
     const n = todo[k];

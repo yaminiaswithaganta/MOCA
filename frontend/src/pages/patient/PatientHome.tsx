@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router";
 import { Empty, ErrorCard, Icon, ScoreBadge, Spinner, StageTag } from "../../components/ui";
 import { api } from "../../lib/api";
 import { patientProfile, useAuth } from "../../lib/auth";
-import { fmtDateTime, greeting } from "../../lib/format";
+import { fmtDate, greeting } from "../../lib/format";
 import type { PatientSession } from "../../lib/types";
 
 export function PatientHome() {
@@ -43,7 +43,7 @@ export function PatientHome() {
             <tbody>
               {tests.map((t) => (
                 <tr key={t.id} onClick={() => open(t)}>
-                  <td><Link to={t.stage === "in_progress" ? `/patient/test/${t.id}` : `/patient/results/${t.id}`} className="row-link" onClick={(e) => e.stopPropagation()}>{t.template_name}</Link><br /><small className="muted">{fmtDateTime(t.started_at)}</small></td>
+                  <td><Link to={t.stage === "in_progress" ? `/patient/test/${t.id}` : `/patient/results/${t.id}`} className="row-link" onClick={(e) => e.stopPropagation()}>{t.template_name}</Link><br /><small className="muted">{fmtDate(t.started_at)}</small></td>
                   <td className="muted">{t.examiner.name}</td>
                   <td><StageTag stage={t.stage} /></td>
                   <td className="r">{t.result ? <ScoreBadge score={t.result.adjusted_total} max={t.result.max_total} /> : "—"}</td>

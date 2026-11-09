@@ -1,5 +1,6 @@
 # Runtime (all three tasks)
-opencv-python
+# OpenCV 5 removed the face detector Task 7 uses; the drawing scoring was tuned on 4.x
+opencv-python>=4.8,<5
 numpy
 matplotlib
 scikit-image

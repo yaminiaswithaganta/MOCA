@@ -113,6 +113,11 @@ class Microphone {
   stop() {
     this.listener = null;
   }
+
+  /** Browsers keep audio paused until the person clicks: call this from a click. */
+  async resume() {
+    if (this.ctx && this.ctx.state === "suspended") await this.ctx.resume();
+  }
 }
 
 export const mic = new Microphone();

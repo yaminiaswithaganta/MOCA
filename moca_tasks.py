@@ -15,7 +15,7 @@ ALL_TASKS = list(TASK_IDS)
 TASK_INFO = {
     1: ("Trail making", "Connect the numbers and letters in order: 1 - A - 2 - B - 3 - C - 4 - D - 5 - E.", False),
     2: ("Cube copy", "Hold the drawing up to the camera. Copy the cube exactly, keeping the whole cube in view.", True),
-    3: ("Clock drawing", "Draw a clock face with all the numbers, then draw the hands to show ten past eleven (11:10).", True),
+    3: ("Clock drawing", "Draw a clock face with all the numbers, then draw the hands to show ten past eleven.", True),
     4: ("Naming", "Name the three animals shown: lion, rhinoceros, camel.", False),
     5: ("Memory (learning)", "Learn the five words FACE, VELVET, CHURCH, DAISY, RED over two rounds. Not scored; used again in task 12.", False),
     6: ("Digit span", "Repeat the digits forward, then backward.", False),

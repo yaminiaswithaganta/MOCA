@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, Navigate, useParams } from "react-router";
 import { Avatar, DOMAIN_OF, ErrorCard, Icon, Ring, Spinner } from "../../components/ui";
 import { api } from "../../lib/api";
-import { band, fmtDate, fmtDateTime } from "../../lib/format";
+import { band, fmtDate } from "../../lib/format";
 import type { PatientSession } from "../../lib/types";
 
 export function PatientResult() {
@@ -27,7 +27,7 @@ export function PatientResult() {
           <div className="saved-tick">✓</div>
           <h1>Thank you. Your test is complete.</h1>
           <p className="lead">{s.examiner.name} will review your answers. Your result will appear here when it's ready.</p>
-          <p className="muted small">{s.template_name} · finished {fmtDateTime(s.finished_at)}</p>
+          <p className="muted small">{s.template_name} · finished {fmtDate(s.finished_at)}</p>
         </div>
       </div>
     );

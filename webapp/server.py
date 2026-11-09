@@ -113,6 +113,8 @@ async def face(file: UploadFile = File(...), _: Patient = Depends(current_patien
     img = cv2.imdecode(np.frombuffer(await file.read(), np.uint8), cv2.IMREAD_GRAYSCALE)
     if img is None:
         return {"face": None}
+    if not hasattr(cv2, "CascadeClassifier"):        # without it the browser uses a default zone
+        return {"face": None}
     w = img.shape[1]
     casc = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
     faces = casc.detectMultiScale(img, 1.1, 5, minSize=(w // 10, w // 10))
