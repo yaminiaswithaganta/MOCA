@@ -221,7 +221,23 @@ A5) and check `server.log` again. Database tables are created automatically on s
 
 ---
 
-## Part C: Create the admin account and try it
+## Part C: Create the accounts and try it
+
+### C0. Quickest: demo accounts (one command, no emails)
+For a demo or to try the app, this creates one admin, one examiner (with the Standard MoCA ready)
+and one patient, each with a password, and prints them:
+
+```bash
+.venv/bin/python -m webapp.make_demo_accounts
+```
+
+Show the person the three emails and passwords it prints, and tell them to save them, because
+they aren't shown again. Running it again skips accounts that already exist. These accounts use
+`@example.com` addresses that can't receive email, so "Forgot password" won't work for them. If a
+password is lost, delete that login in Supabase (**Authentication → Users**) and run the command
+again. Anyone who knows these passwords can sign in, so use them only for demos and testing.
+
+For the person's own admin login, which they'll keep, use C1 as well.
 
 ### C1. Create the admin
 There's no way to sign up as an admin. It's created from the server. Ask for the email they want
@@ -236,7 +252,8 @@ It works once and expires. If it fails, run the command again for a new link. If
 already an admin, the command just prints a new link.
 
 ### C2. Try the app (about 10 minutes)
-Guide them through this:
+With the demo accounts from C0, they can sign in as each role straight away and skip steps 2 to 4.
+Otherwise, guide them through this:
 1. **Sign in** at http://127.0.0.1:8000/login with the admin email and password. They land on
    **People**.
 2. **Add an examiner:** **Add examiner**, using an email they can open. The examiner gets an email

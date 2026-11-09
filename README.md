@@ -58,6 +58,9 @@ Then create your administrator (there is no way to sign up as one). It prints a 
 .venv/bin/python -m webapp.make_admin you@example.com
 ```
 
+For a quick demo, `.venv/bin/python -m webapp.make_demo_accounts` creates one admin, one examiner and one
+patient with ready-made passwords (printed once, no emails sent).
+
 In Supabase, add your site's address followed by `/**` under Authentication > URL Configuration > Redirect URLs,
 or invitation links won't return to the app. Supabase's built-in email is limited to a few messages an hour; add
 your own SMTP provider (Authentication > Emails) before inviting many people.
@@ -381,6 +384,7 @@ Task 13 judges the date in the patient's own time zone, not the server's.
 │   ├── admin.py               The admin portal: adding and deactivating people
 │   ├── supabase_admin.py      Creating logins through Supabase's admin API
 │   ├── make_admin.py          Command that creates an administrator
+│   ├── make_demo_accounts.py  Command that creates demo admin, examiner and patient logins
 │   ├── templates.py           Test designs
 │   ├── sessions.py            Taking tests, results, corrections, release, files
 │   ├── listen.py              Whisper and the live-audio WebSocket
