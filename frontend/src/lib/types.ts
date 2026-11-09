@@ -144,6 +144,17 @@ export interface AdminUser {
   awaiting_review?: number;
 }
 
+export interface Invite {
+  id: number;
+  name: string;
+  email: string;
+  date_of_birth: string;
+  token: string;
+  patient_id: number | null;
+  joined_at: string | null;
+  created_at: string;
+}
+
 export interface Stats {
   patients: number;
   awaiting_review: number;

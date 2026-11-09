@@ -40,15 +40,17 @@ EVERY TIME AFTER THAT
 
 USING IT
 --------
-Administrators: add examiners (and patients, if needed) under "People". Each
-person gets an email with a link to choose a password. You can deactivate anyone.
-Administrators can't see test results.
+Administrators: under "People", add examiners with their email and a password you
+choose. Give them both: they sign in straight away. You can deactivate anyone or
+set a new password. Administrators can't see test results.
 
-Patients: create an account (or use your invitation), choose your examiner and a
-test, then take it. Your result appears once your examiner releases it.
+Examiners: under "Patients", press "Add patient", enter the patient's name, email
+and date of birth, and send them the link. Design tests under "Test designs", then
+review, correct and release results under "Overview".
 
-Examiners: use the link in your invitation. Design tests under "Test designs",
-then review, correct and release results under "Overview".
+Patients: open the link from your examiner, enter your name, email and date of
+birth, and start your test. The same link brings you back later. Your result
+appears once your examiner releases it.
 
 
 WHERE YOUR DATA IS

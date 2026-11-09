@@ -1,7 +1,7 @@
 // Choosing an examiner and a test, then agreeing to the recording.
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { Avatar, Empty, ErrorCard, FormError, Icon, Spinner } from "../../components/ui";
 import { api } from "../../lib/api";
@@ -27,6 +27,13 @@ export function StartTest() {
     }),
     onSuccess: (s) => navigate(`/patient/test/${s.id}`),
   });
+
+  useEffect(() => {
+    if (examiners?.length === 1 && !examiner) {        // invited by one examiner: nothing to choose
+      setExaminer(examiners[0]);
+      setTest(examiners[0].tests.length === 1 ? examiners[0].tests[0] : null);
+    }
+  }, [examiners, examiner]);
 
   if (error) return <ErrorCard error={error} />;
   if (!examiners) return <Spinner />;

@@ -5,13 +5,13 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from moca_tasks import ALL_TASKS
 
 from .auth import Identity, current_identity, current_patient, current_user, get_db
-from .db import Examiner, Patient, TestTemplate, User
+from .db import Examiner, Patient, PatientInvite, TestTemplate, User
 from .templates import DEFAULT_SETTINGS
 
 router = APIRouter(prefix="/api")
@@ -111,10 +111,13 @@ def update_profile(body: dict, identity: Identity = Depends(current_identity),
 
 
 @router.get("/examiners")
-def list_examiners(_: Patient = Depends(current_patient), db: Session = Depends(get_db)):
+def list_examiners(patient: Patient = Depends(current_patient), db: Session = Depends(get_db)):
     """Examiners a patient can choose, each with the tests they have published."""
     out = []
     rows = select(Examiner).join(User).where(User.deactivated_at.is_(None)).order_by(Examiner.name)
+    invited = select(PatientInvite.examiner_id).where(PatientInvite.patient_id == patient.id)
+    if db.scalar(select(func.count()).select_from(invited.subquery())):
+        rows = rows.where(Examiner.id.in_(invited))      # a patient who was invited sees only those examiners
     for e in db.scalars(rows):
         tests = [t.to_dict() for t in e.templates if t.published and not t.archived]
         if tests:

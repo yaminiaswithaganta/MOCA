@@ -3,22 +3,26 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import { ExaminerForm, PatientForm } from "../../components/ProfileForms";
-import { Avatar, Empty, ErrorCard, FormError, Icon, Menu, Modal, Spinner, StatCard } from "../../components/ui";
+import { Avatar, Empty, ErrorCard, FormError, Icon, Menu, Modal, PasswordField, Spinner, StatCard } from "../../components/ui";
 import { api } from "../../lib/api";
 import type { AdminUser } from "../../lib/types";
 
 type Kind = "examiner" | "patient";
 
+const MIN_PASSWORD = 8;
+
 function AddPerson({ kind, onClose, onAdded }: { kind: Kind; onClose: () => void; onAdded: (u: AdminUser) => void }) {
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const add = useMutation({
-    mutationFn: (details: object) => api<AdminUser>(`/api/admin/${kind}s`, { method: "POST", body: { ...details, email } }),
+    mutationFn: (details: object) => api<AdminUser>(`/api/admin/${kind}s`, { method: "POST", body: { ...details, email, password } }),
     onSuccess: onAdded,
   });
   const extras = (
     <>
       <label className="span2">Email<input type="email" required autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} /></label>
-      <p className="hint span2">They'll get an email with a link to choose a password.</p>
+      <PasswordField className="span2" label="Password" minLength={MIN_PASSWORD} autoComplete="new-password" value={password} onChange={setPassword} />
+      <p className="hint span2">At least {MIN_PASSWORD} characters. Give them this email and password: they can sign in straight away.</p>
       <FormError error={add.error?.message ?? null} />
     </>
   );
@@ -26,8 +30,26 @@ function AddPerson({ kind, onClose, onAdded }: { kind: Kind; onClose: () => void
   return (
     <Modal title={`Add ${kind === "examiner" ? "an examiner" : "a patient"}`} onClose={onClose}>
       {kind === "examiner"
-        ? <ExaminerForm submitLabel="Add and send invitation" busy={add.isPending} onSubmit={submit}>{extras}</ExaminerForm>
-        : <PatientForm submitLabel="Add and send invitation" busy={add.isPending} onSubmit={submit}>{extras}</PatientForm>}
+        ? <ExaminerForm submitLabel={`Add examiner`} busy={add.isPending} onSubmit={submit}>{extras}</ExaminerForm>
+        : <PatientForm submitLabel={`Add patient`} busy={add.isPending} onSubmit={submit}>{extras}</PatientForm>}
+    </Modal>
+  );
+}
+
+function SetPassword({ user, onClose, onDone }: { user: AdminUser; onClose: () => void; onDone: () => void }) {
+  const [password, setPassword] = useState("");
+  const save = useMutation({
+    mutationFn: () => api(`/api/admin/users/${user.id}/password`, { method: "POST", body: { password } }),
+    onSuccess: onDone,
+  });
+  return (
+    <Modal title={`New password for ${user.name}`} onClose={onClose}>
+      <form className="stack" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
+        <PasswordField label="New password" minLength={MIN_PASSWORD} autoComplete="new-password" value={password} onChange={setPassword} />
+        <p className="hint">Their old password stops working. Tell them the new one.</p>
+        <FormError error={save.error?.message ?? null} />
+        <div className="row-end flush"><button type="button" className="btn ghost" onClick={onClose}>Cancel</button><button className="btn primary" disabled={save.isPending}>Save password</button></div>
+      </form>
     </Modal>
   );
 }
@@ -39,7 +61,9 @@ export function AdminHome() {
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [resetting, setResetting] = useState<AdminUser | null>(null);
   const closeAdd = useCallback(() => setAdding(false), []);
+  const closeReset = useCallback(() => setResetting(null), []);
 
   useEffect(() => {
     const t = setTimeout(() => setQuery(search), 200);
@@ -64,7 +88,7 @@ export function AdminHome() {
     onMutate: () => setNotice(null),
     onSuccess: (_, { u, action }) => {
       refresh();
-      setNotice(action === "send-link" ? `Sign-in link sent to ${u.email}.` : `${u.name} ${action === "deactivate" ? "deactivated" : "reactivated"}.`);
+      setNotice(`${u.name} ${action === "deactivate" ? "deactivated" : "reactivated"}.`);
     },
   });
 
@@ -116,7 +140,7 @@ export function AdminHome() {
                     <Menu label={`Actions for ${u.name}`}>
                       {(close) => u.active ? (
                         <>
-                          <button role="menuitem" className="menu-item" onClick={() => { close(); act.mutate({ u, action: "send-link" }); }}><Icon name="mail" /> Send sign-in link</button>
+                          <button role="menuitem" className="menu-item" onClick={() => { close(); setNotice(null); setResetting(u); }}><Icon name="edit" /> Set new password</button>
                           <button role="menuitem" className="menu-item danger" onClick={() => { close(); deactivate(u); }}><Icon name="ban" /> Deactivate</button>
                         </>
                       ) : <button role="menuitem" className="menu-item" onClick={() => { close(); act.mutate({ u, action: "reactivate" }); }}><Icon name="check" /> Reactivate</button>}
@@ -132,9 +156,10 @@ export function AdminHome() {
         <AddPerson kind={kind} onClose={closeAdd} onAdded={(u) => {
           closeAdd();
           refresh();
-          setNotice(`${u.name} added. An invitation is on its way to ${u.email}.`);
+          setNotice(`${u.name} added. They can sign in now with ${u.email} and the password you set.`);
         }} />
       )}
+      {resetting && <SetPassword user={resetting} onClose={closeReset} onDone={() => { setNotice(`New password saved for ${resetting.name}.`); setResetting(null); }} />}
     </div>
   );
 }

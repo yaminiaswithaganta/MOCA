@@ -523,9 +523,10 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
 .auth-card .form-grid { display: grid; }
 .auth-card input, .auth-card select { padding: .7rem .85rem; border-radius: 13px; background: #f8fbfd; }
 .auth-card .btn { width: 100%; padding: .75rem 1rem; font-size: 1rem; }
+.pw-field { display: flex; flex-direction: column; gap: .35rem; font-size: .84rem; font-weight: 600; color: var(--slate); }
 .pw { position: relative; display: block; }
 .pw input { padding-right: 2.8rem; }
-.auth-card .pw button { position: absolute; right: .35rem; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 10px; background: transparent; color: var(--muted); cursor: pointer; }
+.pw button { position: absolute; right: .35rem; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 10px; background: transparent; color: var(--muted); cursor: pointer; }
 .pw button:hover { background: var(--brand-soft); color: var(--brand-text); }
 .auth-links { display: flex; justify-content: space-between; gap: 1rem; font-size: .92rem; flex-wrap: wrap; }
 .divider { display: flex; align-items: center; gap: .8rem; color: var(--faint); font-size: .82rem; }

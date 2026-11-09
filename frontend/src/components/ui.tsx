@@ -1,6 +1,6 @@
 // Small shared pieces: icons, avatars, empty states, spinners, score badges.
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { band } from "../lib/format";
 import type { Stage } from "../lib/types";
 
@@ -145,13 +145,21 @@ export function Logo() {
   );
 }
 
-export function PasswordInput({ value, onChange, autoComplete, minLength }: { value: string; onChange: (v: string) => void; autoComplete: string; minLength?: number }) {
+/** A password box with a show/hide button. The button sits outside the label, so the box is
+ *  announced simply by its label. */
+export function PasswordField({ label, value, onChange, autoComplete, minLength, className = "" }: {
+  label: string; value: string; onChange: (v: string) => void; autoComplete: string; minLength?: number; className?: string;
+}) {
   const [shown, setShown] = useState(false);
+  const id = useId();
   return (
-    <span className="pw">
-      <input type={shown ? "text" : "password"} required minLength={minLength} autoComplete={autoComplete} value={value} onChange={(e) => onChange(e.target.value)} />
-      <button type="button" aria-label={shown ? "Hide typed text" : "Show typed text"} onClick={() => setShown(!shown)}><Icon name={shown ? "eyeoff" : "eye"} /></button>
-    </span>
+    <div className={`pw-field ${className}`}>
+      <label htmlFor={id}>{label}</label>
+      <span className="pw">
+        <input id={id} type={shown ? "text" : "password"} required minLength={minLength} autoComplete={autoComplete} value={value} onChange={(e) => onChange(e.target.value)} />
+        <button type="button" aria-label={shown ? "Hide password" : "Show password"} aria-pressed={shown} onClick={() => setShown(!shown)}><Icon name={shown ? "eyeoff" : "eye"} /></button>
+      </span>
+    </div>
   );
 }
 

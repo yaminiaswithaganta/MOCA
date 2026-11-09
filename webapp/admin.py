@@ -1,14 +1,16 @@
 """
 The admin portal: adding and deactivating examiners and patients.
 
+The admin sets each person's password, so they can sign in straight away: no emails.
+
 Administrators manage accounts and nothing else. Nothing here returns a score,
 a transcript or a recording, and no other route lets an admin read them.
 """
 
-import os
 import re
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -20,14 +22,21 @@ from .db import Examiner, Patient, TestSession, User, utcnow
 router = APIRouter(prefix="/api/admin")
 
 EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+MIN_PASSWORD = 8
 
 
 class NewExaminer(ExaminerIn):
     email: str
+    password: str
 
 
 class NewPatient(PatientIn):
     email: str
+    password: str
+
+
+class NewPassword(BaseModel):
+    password: str = Field(max_length=200)
 
 
 def _clean_email(email, db):
@@ -39,14 +48,16 @@ def _clean_email(email, db):
     return email
 
 
-def _password_page(request):
-    site = os.environ.get("MOCA_SITE_URL", str(request.base_url)).rstrip("/")
-    return f"{site}/reset-password"
+def _clean_password(password):
+    if len(password) < MIN_PASSWORD:
+        raise HTTPException(400, f"use a password of at least {MIN_PASSWORD} characters")
+    return password
 
 
-def _invite(email, request):
+def create_login(email, password):
+    """A Supabase login with this password. Shared with the examiners' patient invitations."""
     try:
-        return supabase_admin.invite(email, _password_page(request))
+        return supabase_admin.create_login(email, password)
     except supabase_admin.EmailTaken:
         # Never adopt the existing login: anyone could have registered it with this address
         # and would become an examiner the moment it was added here.
@@ -101,11 +112,11 @@ def list_users(role: str, q: str = "", _: User = Depends(current_admin), db: Ses
 
 
 @router.post("/examiners")
-def add_examiner(body: NewExaminer, request: Request, admin: User = Depends(current_admin),
+def add_examiner(body: NewExaminer, admin: User = Depends(current_admin),
                  db: Session = Depends(get_db)):
-    email = _clean_email(body.email, db)
-    data = clean_examiner(ExaminerIn(**body.model_dump(exclude={"email"})))
-    user = User(id=_invite(email, request), email=email, role="examiner", added_by=admin.id)
+    email, password = _clean_email(body.email, db), _clean_password(body.password)
+    data = clean_examiner(ExaminerIn(**body.model_dump(exclude={"email", "password"})))
+    user = User(id=create_login(email, password), email=email, role="examiner", added_by=admin.id)
     user.examiner = new_examiner(data)
     db.add(user)
     db.commit()
@@ -113,11 +124,11 @@ def add_examiner(body: NewExaminer, request: Request, admin: User = Depends(curr
 
 
 @router.post("/patients")
-def add_patient(body: NewPatient, request: Request, admin: User = Depends(current_admin),
+def add_patient(body: NewPatient, admin: User = Depends(current_admin),
                 db: Session = Depends(get_db)):
-    email = _clean_email(body.email, db)
-    data = clean_patient(PatientIn(**body.model_dump(exclude={"email"})))
-    user = User(id=_invite(email, request), email=email, role="patient", added_by=admin.id)
+    email, password = _clean_email(body.email, db), _clean_password(body.password)
+    data = clean_patient(PatientIn(**body.model_dump(exclude={"email", "password"})))
+    user = User(id=create_login(email, password), email=email, role="patient", added_by=admin.id)
     user.patient = Patient(**data)
     db.add(user)
     db.commit()
@@ -141,12 +152,12 @@ def reactivate(user_id: str, admin: User = Depends(current_admin), db: Session =
     return _row(user, db)
 
 
-@router.post("/users/{user_id}/send-link")
-def send_link(user_id: str, request: Request, admin: User = Depends(current_admin),
-              db: Session = Depends(get_db)):
-    """Email a fresh link to choose a password, for an expired invite or a forgotten one."""
+@router.post("/users/{user_id}/password")
+def set_password(user_id: str, body: NewPassword, admin: User = Depends(current_admin),
+                 db: Session = Depends(get_db)):
+    """A new password for someone who forgot theirs. The admin tells them what it is."""
     user = _target(db, user_id)
     if user.deactivated_at:
         raise HTTPException(409, "reactivate this account first")
-    supabase_admin.send_password_link(user.email, _password_page(request))
-    return {"sent": user.email}
+    supabase_admin.set_password(user.id, _clean_password(body.password))
+    return {"updated": user.email}

@@ -43,7 +43,7 @@ export function Onboarding() {
       <PatientForm submitLabel="Finish" busy={busy} onSubmit={finish}>
         <FormError error={error} />
       </PatientForm>
-      <p className="hint">Are you an examiner? Your administrator adds your account and emails you a link.</p>
+      <p className="hint">Are you an examiner? Your administrator creates your account and gives you your sign-in details.</p>
       <div className="auth-links"><span /><button className="link-btn" onClick={signOut}>Sign out</button></div>
     </AuthShell>
   );

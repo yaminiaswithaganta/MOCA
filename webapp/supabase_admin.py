@@ -43,6 +43,22 @@ def invite(email, redirect_to):
     return r.json()["id"]
 
 
+def create_login(email, password):
+    """A login that can sign in straight away with this password. Returns the user id."""
+    r = _call("POST", "/admin/users", json={"email": email, "password": password, "email_confirm": True})
+    if r.status_code == 422:
+        raise EmailTaken(email)
+    if r.status_code >= 400:
+        raise _failed(r)
+    return r.json()["id"]
+
+
+def set_password(user_id, password):
+    r = _call("PUT", f"/admin/users/{user_id}", json={"password": password})
+    if r.status_code >= 400:
+        raise _failed(r)
+
+
 def send_password_link(email, redirect_to):
     r = _call("POST", "/recover", json={"email": email}, params={"redirect_to": redirect_to})
     if r.status_code >= 400:

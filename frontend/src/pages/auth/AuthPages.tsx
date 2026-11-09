@@ -3,7 +3,7 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router";
 import { Brand } from "../../components/Layout";
-import { FormError, Icon, PasswordInput, Spinner } from "../../components/ui";
+import { FormError, Icon, PasswordField, Spinner } from "../../components/ui";
 import { useAuth } from "../../lib/auth";
 import { publicConfig, supabase } from "../../lib/supabase";
 
@@ -91,7 +91,7 @@ export function Login() {
       <GoogleButton />
       <form onSubmit={submit}>
         <label>Email<input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} /></label>
-        <label>Password<PasswordInput autoComplete="current-password" value={password} onChange={setPassword} /></label>
+        <PasswordField label="Password" autoComplete="current-password" value={password} onChange={setPassword} />
         <FormError error={error} />
         <button className="btn primary" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
       </form>
@@ -139,11 +139,11 @@ export function Signup() {
   return (
     <AuthShell>
       <h2>Create your account</h2>
-      <p className="muted" style={{ margin: 0 }}>For patients taking a test. Examiners get an invitation from their administrator.</p>
+      <p className="muted" style={{ margin: 0 }}>For patients taking a test. If your examiner sent you a link, open that instead.</p>
       <GoogleButton />
       <form onSubmit={submit}>
         <label>Email<input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} /></label>
-        <label>Password<PasswordInput minLength={MIN_PASSWORD} autoComplete="new-password" value={password} onChange={setPassword} /></label>
+        <PasswordField label="Password" minLength={MIN_PASSWORD} autoComplete="new-password" value={password} onChange={setPassword} />
         <FormError error={error} />
         <button className="btn primary" disabled={busy}>{busy ? "Creating…" : "Create account"}</button>
       </form>
@@ -204,7 +204,7 @@ export function ResetPassword() {
       {session
         ? (
           <form onSubmit={submit}>
-            <label>New password<PasswordInput minLength={MIN_PASSWORD} autoComplete="new-password" value={password} onChange={setPassword} /></label>
+            <PasswordField label="New password" minLength={MIN_PASSWORD} autoComplete="new-password" value={password} onChange={setPassword} />
             <FormError error={error} />
             <button className="btn primary">Save password</button>
           </form>

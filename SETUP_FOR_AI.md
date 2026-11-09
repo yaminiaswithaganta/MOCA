@@ -16,9 +16,11 @@ website, clicking a button, copying a value, or typing their computer password.
 ### What this app is
 A web app for the MoCA (Montreal Cognitive Assessment) with three kinds of accounts:
 
-- **Admin:** adds examiners (and patients if needed). Can't see results.
-- **Examiner:** designs tests, reviews each patient's answers, corrects scores and releases results.
-- **Patient:** signs up, chooses an examiner and takes the test by voice and camera.
+- **Admin:** adds examiners with an email and a password it chooses (no emails sent). Can't see results.
+- **Examiner:** adds patients and sends each one a link, designs tests, reviews answers, corrects scores and
+  releases results.
+- **Patient:** opens the examiner's link, confirms name, email and date of birth, and takes the test by voice
+  and camera. Patients can also sign up themselves.
 
 How it's built:
 - **Server:** Python (FastAPI) in `webapp/`. It also runs speech recognition (faster-whisper) and
@@ -256,14 +258,15 @@ With the demo accounts from C0, they can sign in as each role straight away and 
 Otherwise, guide them through this:
 1. **Sign in** at http://127.0.0.1:8000/login with the admin email and password. They land on
    **People**.
-2. **Add an examiner:** **Add examiner**, using an email they can open. The examiner gets an email
-   with a link to choose a password.
-3. **Become the examiner:** open that email in a **different browser** or a private window, set
-   the password, then go to **Test designs**. A **Standard MoCA** is already there. For a quick
-   try, create a short test with 1 or 2 tasks and tick **Published**.
-4. **Become a patient:** in another private window, go to http://127.0.0.1:8000/signup, create an
-   account, enter the details, then **Start a test**: choose the examiner, choose the test, tick
-   the consent box, **Begin test**, then **Start**.
+2. **Add an examiner:** **Add examiner**. Fill in the name, title, organisation, an email and a
+   password. No email is sent: they sign in with that email and password straight away.
+3. **Become the examiner:** in a **private window**, sign in with that email and password. Go to
+   **Test designs**: a **Standard MoCA** is already there. For a quick try, create a short test
+   with 1 or 2 tasks and tick **Published**. Then **Patients → Add patient**: enter a patient's
+   name, email and date of birth, and copy the link it shows.
+4. **Become the patient:** open the link in another private window. Enter the same name, email
+   and date of birth, plus years of education, and press **Continue**. They're signed in with the
+   examiner already chosen: choose the test, tick the consent box, **Begin test**, then **Start**.
 5. **Review as the examiner:** **Overview** → open the test → check the answers → **Release
    result**.
 6. **See the result as the patient:** reload the patient window.
@@ -363,7 +366,9 @@ change `MOCA_SITE_URL` to the online address.
 | `401` errors in the log, or adding people fails | Secret key was deleted or is wrong. B3: make a new one, update `.env` (or the host's variables), restart. |
 | Invitation or reset link opens the wrong site or says "invalid" | B5 / D5: Site URL and Redirect URLs must match the address in use. Set `MOCA_SITE_URL` the same. Links work once and expire, so send a new one. |
 | "This email already has a login that isn't set up" | Delete that login in Supabase (**Authentication → Users**), then add the person again. |
-| Emails don't arrive | Supabase's built-in email sends only a few an hour, so wait. For more, add an email provider under **Authentication → Emails → SMTP** (Resend and Brevo have free tiers). |
+| Patient link says details don't match | The patient must type exactly the email and date of birth the examiner entered (shown under **Patients → Patient links**). |
+| Someone forgot their password | Admin: **People → ⋯ → Set new password**, then tell them the new one. Patients from a link don't need one: they open their link again. |
+| Emails don't arrive | The app only sends emails for self sign-up and "Forgot password". Supabase's built-in email sends only a few an hour, so wait. For more, add an email provider under **Authentication → Emails → SMTP** (Resend and Brevo have free tiers). |
 | "Getting ready…" for a long time | First start downloads the speech model. Check internet. On slow computers or small servers, set `MOCA_WHISPER_MODEL=base.en`. |
 | "No sound reached the app" during a test | Microphone blocked. In Chrome: **Settings → Privacy and security → Site settings → Microphone**, allow the site. On macOS also: **System Settings → Privacy & Security → Microphone → Chrome**. Then **Try this task again**. |
 | No camera | Same as above, under **Camera**. Close other apps using the camera. |

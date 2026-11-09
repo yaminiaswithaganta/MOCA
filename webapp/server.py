@@ -28,7 +28,7 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from moca_common import PROJECT_DIR, RESULTS_ROOT  # noqa: E402
 
-from . import accounts, admin, listen, sessions, storage, templates  # noqa: E402
+from . import accounts, admin, invites, listen, sessions, storage, templates  # noqa: E402
 from . import web_tasks as wt  # noqa: E402
 from .auth import SUPABASE_URL, current_patient, current_user  # noqa: E402
 from .db import Patient, User, init_db  # noqa: E402
@@ -74,6 +74,7 @@ async def _headers(request, call_next):
 
 app.include_router(accounts.router)
 app.include_router(admin.router)
+app.include_router(invites.router)
 app.include_router(templates.router)
 app.include_router(sessions.router)
 app.include_router(listen.router)

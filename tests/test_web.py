@@ -88,12 +88,12 @@ def new_admin():
 
 
 def add_person(admin, kind, **details):
-    """An admin adds someone. Supabase's invite is replaced by a known user id."""
+    """An admin adds someone with a password. Supabase's login is replaced by a known user id."""
     w = Who()
-    body = {"email": f"{w.id}@example.com", "name": f"{kind} {w.id[-3:]}", **details}
-    with mock.patch.object(supabase_admin, "invite", return_value=w.id) as invite:
+    body = {"email": f"{w.id}@example.com", "name": f"{kind} {w.id[-3:]}", "password": "Secret-123", **details}
+    with mock.patch.object(supabase_admin, "create_login", return_value=w.id) as create:
         w.added = admin.post(f"/api/admin/{kind}s", body)
-    w.invite = invite
+    w.create = create
     return w
 
 
@@ -585,7 +585,7 @@ class TestAdmin(unittest.TestCase):
         self.assertEqual(e.get("/api/me").json()["role"], "examiner")
         self.assertEqual(e.get("/api/templates").json()[0]["name"], "Standard MoCA")
         self.assertIn(e.added.json()["id"], [u["id"] for u in a.get("/api/admin/users?role=examiner").json()])
-        self.assertTrue(e.invite.call_args.args[1].endswith("/reset-password"))
+        self.assertEqual(e.create.call_args.args[1], "Secret-123")      # signs in with this, no email
 
     def test_adding_a_patient(self):
         a = new_admin()
@@ -598,19 +598,22 @@ class TestAdmin(unittest.TestCase):
         self.assertEqual(add_person(a, "patient", email="nope").added.status_code, 400)
         self.assertEqual(add_person(a, "examiner", name=" ").added.status_code, 400)
         self.assertEqual(add_person(a, "patient", education_years=99).added.status_code, 400)
+        self.assertEqual(add_person(a, "examiner", password="short").added.status_code, 400)
+        self.assertEqual(add_person(a, "examiner", password=None).added.status_code, 422)
 
     def test_an_email_cannot_be_used_twice(self):
         a = new_admin()
         first = add_person(a, "examiner")
         again = add_person(a, "patient", email=first.added.json()["email"].upper())
         self.assertEqual(again.added.status_code, 409)
-        again.invite.assert_not_called()
+        again.create.assert_not_called()
 
     def test_an_existing_login_is_never_adopted(self):
         """Someone registered the address first: they must not become an examiner."""
         a = new_admin()
-        with mock.patch.object(supabase_admin, "invite", side_effect=supabase_admin.EmailTaken("x")):
-            r = a.post("/api/admin/examiners", {"email": "taken@example.com", "name": "Dr Real"})
+        with mock.patch.object(supabase_admin, "create_login", side_effect=supabase_admin.EmailTaken("x")):
+            r = a.post("/api/admin/examiners", {"email": "taken@example.com", "name": "Dr Real",
+                                                "password": "Secret-123"})
         self.assertEqual(r.status_code, 409)
 
     def test_admin_cannot_see_any_test_results(self):
@@ -651,10 +654,15 @@ class TestAdmin(unittest.TestCase):
             ws.send_json({"session_id": sid, "task": 4, "step": "lion", "token": token(p.id)})
             self.assertEqual(ws.receive_json()["type"], "error")
 
-    def test_deactivated_account_gets_no_new_link(self):
+    def test_setting_a_new_password(self):
         a, p = new_admin(), new_patient()
-        a.post(f"/api/admin/users/{p.id}/deactivate")
-        self.assertEqual(a.post(f"/api/admin/users/{p.id}/send-link").status_code, 409)
+        with mock.patch.object(supabase_admin, "set_password") as setp:
+            self.assertEqual(a.post(f"/api/admin/users/{p.id}/password", {"password": "short"}).status_code, 400)
+            self.assertEqual(a.post(f"/api/admin/users/{p.id}/password", {"password": "New-pass-99"}).status_code, 200)
+            setp.assert_called_once_with(p.id, "New-pass-99")
+            a.post(f"/api/admin/users/{p.id}/deactivate")
+            self.assertEqual(a.post(f"/api/admin/users/{p.id}/password", {"password": "New-pass-99"}).status_code, 409)
+        self.assertEqual(new_patient().post(f"/api/admin/users/{p.id}/password", {"password": "New-pass-99"}).status_code, 403)
 
     def test_stats(self):
         a = new_admin()
@@ -664,6 +672,126 @@ class TestAdmin(unittest.TestCase):
         after = a.get("/api/admin/stats").json()
         self.assertEqual(after["deactivated"], before["deactivated"] + 1)
         self.assertEqual(after["patients"], before["patients"])
+
+
+class TestPatientInvites(unittest.TestCase):
+    DOB = "1948-03-02"
+
+    def invite(self, examiner, email=None, dob=None):
+        email = email or f"pat{_n[0]}{len(listen.answers)}@example.com"
+        r = examiner.post("/api/invites", {"name": "Meena Rao", "email": email, "date_of_birth": dob or self.DOB})
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    def join(self, token, email, dob=None, education=8, user_id=None):
+        """The patient opens the link. Supabase is replaced; returns (response, new login id)."""
+        uid = user_id or Who().id
+        with mock.patch.object(supabase_admin, "create_login", return_value=uid), \
+                mock.patch.object(supabase_admin, "set_password") as setp:
+            r = client.post(f"/api/join/{token}", json={"name": "Meena Rao", "email": email,
+                                                        "date_of_birth": dob or self.DOB,
+                                                        "education_years": education})
+        return r, uid, setp
+
+    def as_user(self, uid):
+        w = Who.__new__(Who)
+        w.id, w.headers = uid, {"Authorization": f"Bearer {token(uid)}"}
+        return w
+
+    def test_examiner_creates_a_link(self):
+        e = new_examiner()
+        inv = self.invite(e, "meena@example.com")
+        self.assertGreaterEqual(len(inv["token"]), 40)
+        self.assertIsNone(inv["joined_at"])
+        self.assertEqual(self.invite(e, "MEENA@example.com")["token"], inv["token"])   # same patient, same link
+        self.assertEqual([i["id"] for i in e.get("/api/invites").json()], [inv["id"]])
+
+    def test_link_page_shows_only_the_examiner(self):
+        e = new_examiner()
+        inv = self.invite(e)
+        info = client.get(f"/api/join/{inv['token']}").json()
+        self.assertEqual(set(info), {"examiner", "joined"})
+        self.assertNotIn(inv["email"], str(info))
+        self.assertEqual(client.get("/api/join/not-a-real-token").status_code, 404)
+
+    def test_details_must_match(self):
+        e = new_examiner()
+        inv = self.invite(e)
+        self.assertEqual(self.join(inv["token"], "someone@else.com")[0].status_code, 400)
+        self.assertEqual(self.join(inv["token"], inv["email"], dob="1960-01-01")[0].status_code, 400)
+        self.assertEqual(self.join(inv["token"], inv["email"], education=None)[0].status_code, 400)
+
+    def test_joining_creates_a_connected_patient(self):
+        e, other = new_examiner(), new_examiner()
+        inv = self.invite(e)
+        r, uid, _ = self.join(inv["token"], inv["email"].upper())
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["email"], inv["email"])
+        self.assertGreaterEqual(len(r.json()["password"]), 24)
+        p = self.as_user(uid)
+        me = p.get("/api/me").json()
+        self.assertEqual((me["role"], me["profile"]["education_years"]), ("patient", 8))
+        # connected: the patient sees only this examiner, and the examiner sees the patient
+        self.assertEqual([x["id"] for x in p.get("/api/examiners").json()], [e.standard["examiner_id"]])
+        self.assertIn(me["profile"]["id"], [x["id"] for x in e.get("/api/patients").json()])
+        self.assertEqual(e.get(f"/api/patients/{me['profile']['id']}").status_code, 200)
+        self.assertEqual(other.get(f"/api/patients/{me['profile']['id']}").status_code, 404)
+        self.assertEqual(p.post("/api/sessions", {"template_id": other.standard["id"], "consent": True}).status_code, 404)
+        self.assertEqual(p.post("/api/sessions", {"template_id": e.standard["id"], "consent": True}).status_code, 200)
+        self.assertIsNotNone(e.get("/api/invites").json()[0]["joined_at"])
+
+    def test_opening_the_link_again_signs_them_back_in(self):
+        e = new_examiner()
+        inv = self.invite(e)
+        _, uid, _ = self.join(inv["token"], inv["email"])
+        r, _, setp = self.join(inv["token"], inv["email"], education=12)
+        self.assertEqual(r.status_code, 200)
+        setp.assert_called_once()
+        self.assertEqual(setp.call_args.args, (uid, r.json()["password"]))
+        self.assertEqual(self.as_user(uid).get("/api/me").json()["profile"]["education_years"], 12)
+
+    def test_own_account_is_connected_but_password_untouched(self):
+        e, p = new_examiner(), new_patient()
+        email = f"{p.id}@example.com"
+        with SessionLocal() as db:
+            db.get(User, p.id).email = email
+            db.commit()
+        inv = self.invite(e, email, dob="1950-02-03")
+        r, _, setp = self.join(inv["token"], email, dob="1950-02-03")
+        self.assertEqual(r.json(), {"sign_in": True, "email": email})
+        setp.assert_not_called()
+        self.assertIn(e.standard["examiner_id"], [x["id"] for x in p.get("/api/examiners").json()])
+        r, _, setp = self.join(inv["token"], email, dob="1950-02-03")
+        self.assertTrue(r.json()["sign_in"])
+        setp.assert_not_called()
+
+    def test_staff_email_cannot_join(self):
+        e = new_examiner()
+        staff = new_examiner()
+        email = staff.added.json()["email"]
+        inv = self.invite(e, email)
+        self.assertEqual(self.join(inv["token"], email)[0].status_code, 409)
+
+    def test_only_examiners_make_or_delete_links(self):
+        e, p = new_examiner(), new_patient()
+        self.assertEqual(p.post("/api/invites", {"name": "x", "email": "x@y.co", "date_of_birth": self.DOB}).status_code, 403)
+        inv = self.invite(e)
+        self.assertEqual(new_examiner().delete(f"/api/invites/{inv['id']}").status_code, 404)
+        self.assertEqual(e.delete(f"/api/invites/{inv['id']}").status_code, 200)
+        self.assertEqual(client.get(f"/api/join/{inv['token']}").status_code, 404)
+
+    def test_bad_invite_details(self):
+        e = new_examiner()
+        for body in ({"name": "", "email": "a@b.co", "date_of_birth": self.DOB},
+                     {"name": "A", "email": "nope", "date_of_birth": self.DOB},
+                     {"name": "A", "email": "a@b.co", "date_of_birth": "2999-01-01"}):
+            self.assertEqual(e.post("/api/invites", body).status_code, 400, body)
+
+    def test_deactivated_examiners_links_stop_working(self):
+        a, e = new_admin(), new_examiner()
+        inv = self.invite(e)
+        a.post(f"/api/admin/users/{e.id}/deactivate")
+        self.assertEqual(client.get(f"/api/join/{inv['token']}").status_code, 404)
 
 
 class TestServing(unittest.TestCase):

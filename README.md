@@ -113,17 +113,17 @@ Python packages (`requirements-web.txt`, which includes `requirements.txt`):
 
 ## 3. Using the app
 
-There are three roles, and an account has one. **Patients** sign up themselves (by email, or Google if enabled)
-or are added by an admin. **Examiners** are only added by an admin. **Admins** are only created from the server
-with `python -m webapp.make_admin`.
+There are three roles, and an account has one. **Patients** join from a link their examiner sends, sign up
+themselves, or are added by an admin. **Examiners** are only added by an admin. **Admins** are only created from
+the server with `python -m webapp.make_admin`.
 
 ### Administrators
 
 **People** lists examiners and patients. An admin can:
 
-- **Add** a person. They get an email with a link to choose a password. Examiners start with a published
-  Standard MoCA, so patients can choose them straight away.
-- **Send sign-in link** if the invitation expired or a password was forgotten.
+- **Add** a person with their name, details, email and a **password the admin chooses**. They can sign in
+  straight away; no email is sent. Examiners start with a published Standard MoCA.
+- **Set new password** for someone who forgot theirs (the ⋯ menu on their row).
 - **Deactivate** an account. Access ends on their next request, an examiner disappears from patients' choices, and
   records are kept. **Reactivate** restores it. Tests waiting for a deactivated examiner stay unreviewed.
 
@@ -149,7 +149,12 @@ Admins can't see scores, transcripts or recordings, only how many tests an accou
 - **Review:** the score sheet, what was heard, and each recording and photo. **Correct score** needs a reason, and
   the automatic score is kept beside the correction.
 - **Release result:** shows the result to the patient, with an optional note. It's final: corrections stop here.
-- **Patients:** everyone who has tested with this examiner, with their score over time.
+- **Patients → Add patient:** enter the patient's name, email and date of birth to get a link to send them.
+  The patient opens it and enters the same name, email and date of birth (plus years of education). If they
+  match, the patient is signed in, connected to this examiner and can start a test. The same link signs them
+  back in later, so they don't need a password. **Patient links** shows who has joined, with Copy link and
+  Delete.
+- **Patients:** everyone who joined through a link or has tested with this examiner, with their score over time.
 - **Delete** permanently removes a test with its recordings and photos.
 
 ### During a test
@@ -302,6 +307,7 @@ reaches nothing. The role is stored in the app's own `users` table, never in Sup
 | Table | Holds |
 |---|---|
 | `users` | Supabase user id, email, role, which admin added them, when deactivated |
+| `patient_invites` | An examiner's link for one patient: token, name, email, date of birth, who joined |
 | `patients` | Name, date of birth, sex, years of education |
 | `examiners` | Name, title, organisation |
 | `test_templates` | An examiner's designs: tasks in order, settings, published |
@@ -382,6 +388,7 @@ Task 13 judges the date in the patient's own time zone, not the server's.
 │   ├── auth.py                Token checks, current user and role
 │   ├── accounts.py            Profiles, first-time setup, list of examiners
 │   ├── admin.py               The admin portal: adding and deactivating people
+│   ├── invites.py             Patient links an examiner shares
 │   ├── supabase_admin.py      Creating logins through Supabase's admin API
 │   ├── make_admin.py          Command that creates an administrator
 │   ├── make_demo_accounts.py  Command that creates demo admin, examiner and patient logins
@@ -431,8 +438,11 @@ Interactive docs are at `/docs` while the server runs.
 | GET | `/api/sessions/{id}/files/{name}` | Examiner, own | A recording or photo |
 | GET | `/api/stats`, `/api/patients`, `/api/patients/{id}` | Examiner | Own numbers and patients |
 | GET | `/api/admin/stats`, `/api/admin/users?role=` | Admin | Counts; examiners or patients |
-| POST | `/api/admin/examiners`, `/api/admin/patients` | Admin | Add a person and email an invitation |
-| POST | `/api/admin/users/{id}/deactivate`, `/reactivate`, `/send-link` | Admin | Manage an account |
+| POST | `/api/admin/examiners`, `/api/admin/patients` | Admin | Add a person with a password |
+| POST | `/api/admin/users/{id}/deactivate`, `/reactivate`, `/password` | Admin | Manage an account |
+| GET, POST | `/api/invites` | Examiner | List or create patient links |
+| DELETE | `/api/invites/{id}` | Examiner, own | Delete a link |
+| GET, POST | `/api/join/{token}` | Public (the link) | Who invited them; confirm details and sign in |
 | WS | `/ws/listen` | Patient, own | Live listening for one answer |
 
 ---
@@ -527,6 +537,7 @@ hand-raise detector on synthetic video.
 | "Supabase isn't set up yet" | Fill in `.env` (see `.env.example`) and restart the server |
 | "Please sign in again" on every page | The app and `.env` point at different Supabase projects |
 | Email links open the wrong site | Set the site address in Supabase under Authentication > URL Configuration |
+| "doesn't match what your examiner entered" | The patient must type the same email and date of birth the examiner entered. The examiner can check them under **Patient links** |
 | Invitation link opens the wrong site | Add your address to Redirect URLs in Supabase and set `MOCA_SITE_URL` |
 | "this email already has a login that isn't set up" | Delete that login in Supabase (Authentication > Users), then add the person again |
 | Invitation email never arrives | Supabase's built-in email has a low hourly limit; add your own SMTP provider |

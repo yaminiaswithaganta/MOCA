@@ -5,6 +5,7 @@ import { useAuth } from "./lib/auth";
 import { ForgotPassword, Login, ResetPassword, Signup } from "./pages/auth/AuthPages";
 import { AdminHome } from "./pages/admin/AdminHome";
 import { DeviceCheck } from "./pages/DeviceCheck";
+import { Join } from "./pages/Join";
 import { ExaminerHome } from "./pages/examiner/ExaminerHome";
 import { PatientDetail, Patients } from "./pages/examiner/Patients";
 import { Review } from "./pages/examiner/Review";
@@ -36,6 +37,7 @@ export function App() {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/onboarding" element={<Onboarding />} />
+      <Route path="/join/:token" element={<Join />} />
 
       <Route element={<RequireRole />}>
         <Route element={<AppLayout />}>

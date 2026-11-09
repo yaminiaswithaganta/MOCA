@@ -30,7 +30,7 @@ from moca_tasks import TASK_IDS
 from . import storage
 from . import web_tasks as wt
 from .auth import current_examiner, current_patient, current_user, get_db
-from .db import (Examiner, Patient, SessionLocal, TaskResult, TestSession, TestTemplate, User, iso,
+from .db import (Examiner, Patient, PatientInvite, SessionLocal, TaskResult, TestSession, TestTemplate, User, iso,
                  max_points, utcnow)
 from .listen import answers
 
@@ -188,6 +188,9 @@ def create_session(body: SessionIn, patient: Patient = Depends(current_patient),
     t = db.get(TestTemplate, body.template_id)
     if t is None or not t.published or t.archived or t.examiner.user.deactivated_at:
         raise HTTPException(404, "test not found")
+    invited = set(db.scalars(select(PatientInvite.examiner_id).where(PatientInvite.patient_id == patient.id)))
+    if invited and t.examiner_id not in invited:
+        raise HTTPException(404, "test not found")        # invited patients test with their own examiners
     now = utcnow()
     folder = RESULTS_ROOT / f"session_{now.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
     folder.mkdir(parents=True)
@@ -315,19 +318,26 @@ def stats(examiner: Examiner = Depends(current_examiner), db: Session = Depends(
                                       .where(mine, finished, TestSession.max_total == FULL_TEST_POINTS))}
 
 
+def _patient_ids(examiner):
+    """Patients who took a test with this examiner, or joined through one of their links."""
+    tested = select(TestSession.patient_id.label("pid")).where(TestSession.examiner_id == examiner.id)
+    invited = select(PatientInvite.patient_id.label("pid")).where(PatientInvite.examiner_id == examiner.id,
+                                                                  PatientInvite.patient_id.is_not(None))
+    return select(Patient.id).where(Patient.id.in_(tested.union(invited)))
+
+
 @router.get("/patients")
 def list_patients(q: str = "", examiner: Examiner = Depends(current_examiner),
                   db: Session = Depends(get_db)):
     """Patients who have taken a test with this examiner."""
-    stmt = select(Patient).where(Patient.id.in_(
-        select(TestSession.patient_id).where(TestSession.examiner_id == examiner.id))).order_by(Patient.name)
+    stmt = select(Patient).where(Patient.id.in_(_patient_ids(examiner))).order_by(Patient.name)
     if q.strip():
         stmt = stmt.where(Patient.name.ilike(f"%{q.strip()}%"))
     out = []
     for p in db.scalars(stmt):
         mine = [s for s in p.sessions if s.examiner_id == examiner.id]
         out.append({**p.to_dict(), "tests": len(mine),
-                    "last_test": _examiner_out(mine[0], with_results=False)})
+                    "last_test": _examiner_out(mine[0], with_results=False) if mine else None})
     return out
 
 
@@ -335,9 +345,10 @@ def list_patients(q: str = "", examiner: Examiner = Depends(current_examiner),
 def get_patient(patient_id: int, examiner: Examiner = Depends(current_examiner),
                 db: Session = Depends(get_db)):
     p = db.get(Patient, patient_id)
-    mine = [s for s in p.sessions if s.examiner_id == examiner.id] if p else []
-    if not mine:
+    if p is None or not db.scalar(select(func.count()).select_from(
+            _patient_ids(examiner).where(Patient.id == patient_id).subquery())):
         raise HTTPException(404, "patient not found")
+    mine = [s for s in p.sessions if s.examiner_id == examiner.id]
     return {**p.to_dict(), "sessions": [_examiner_out(s, with_results=False) for s in mine]}
 
 

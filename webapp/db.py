@@ -7,6 +7,7 @@ Tables:
                       ("patient", "examiner" or "admin")
   * patients       -- a patient's own details (name, date of birth, sex, education)
   * examiners      -- an examiner's public details (name, title, organisation)
+  * patient_invites -- links an examiner shares so a patient can join them
   * test_templates -- tests an examiner designed (tasks, order, settings)
   * test_sessions  -- one row per test taken (a snapshot of the template, totals, review)
   * task_results   -- one row per scored task (score, criteria, reason, evidence files)
@@ -214,6 +215,28 @@ class TaskResult(Base):
                 "timestamp": iso(self.created_at), "auto_score": self.auto_score,
                 "auto_criteria": self.auto_criteria, "corrected_at": iso(self.corrected_at),
                 "correction_note": self.correction_note}
+
+
+class PatientInvite(Base):
+    """A link an examiner shares with one patient. Opening it with the matching email and
+    date of birth signs the patient in, and connects them to the examiner."""
+    __tablename__ = "patient_invites"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True)
+    examiner_id: Mapped[int] = mapped_column(ForeignKey("examiners.id"))
+    patient_id: Mapped[int | None] = mapped_column(ForeignKey("patients.id"), nullable=True)
+    name: Mapped[str] = mapped_column(String(200))
+    email: Mapped[str] = mapped_column(String(320))
+    date_of_birth: Mapped[str] = mapped_column(String(10))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    joined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # True when this link made the patient's login; then the link is how they sign in.
+    # A patient who already had their own account keeps using their own password.
+    created_login: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    examiner: Mapped[Examiner] = relationship()
+    patient: Mapped["Patient | None"] = relationship()
 
 
 def max_points(tasks):
