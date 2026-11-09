@@ -248,7 +248,7 @@ async function photoTask(st: Stage, cfg: any, number: number) {
       btn("use").disabled = btn("retake").disabled = true;
       st.status("Saving your drawing…");
       const fd = new FormData();
-      fd.append("file", blob, "capture.png");
+      fd.append("file", blob, "capture.jpg");
       return st.race(api(`/api/sessions/${st.info.sessionId}/tasks/${number}/photo`, { method: "POST", form: fd }));
     }
     still.hidden = true;

@@ -10,7 +10,8 @@ transcribes speech with Whisper (webapp/listen.py), scores every task with the
 original task modules and keeps everything in the database (webapp/db.py) and
 Supabase Storage (webapp/storage.py).
 
-Run one worker process: Whisper and the answers of tests in progress live in memory.
+Each process loads its own Whisper model. Answers of tasks in progress are in the database
+(pending_answers), so any process or server copy can finish a task.
 """
 
 import logging
@@ -50,7 +51,7 @@ async def lifespan(_):
 
 
 app = FastAPI(title="MoCA", lifespan=lifespan)
-RESULTS_ROOT.mkdir(exist_ok=True)
+RESULTS_ROOT.mkdir(parents=True, exist_ok=True)
 
 SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",

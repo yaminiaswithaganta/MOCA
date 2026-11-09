@@ -201,11 +201,12 @@ export function stopCamera() {
   camStream = null;
 }
 
-/** Full-resolution still from the video as a PNG blob. */
+/** Full-resolution still from the video, as JPEG: a PNG of a camera frame can pass the 4.5 MB
+ *  upload limit of serverless hosts such as Vercel. */
 export function snapshot(videoEl: HTMLVideoElement) {
   const c = document.createElement("canvas");
   c.width = videoEl.videoWidth;
   c.height = videoEl.videoHeight;
   c.getContext("2d")!.drawImage(videoEl, 0, 0);
-  return new Promise<Blob>((r) => c.toBlob((b) => r(b!), "image/png"));
+  return new Promise<Blob>((r) => c.toBlob((b) => r(b!), "image/jpeg", 0.95));
 }

@@ -11,6 +11,8 @@ Tables:
   * test_templates -- tests an examiner designed (tasks, order, settings)
   * test_sessions  -- one row per test taken (a snapshot of the template, totals, review)
   * task_results   -- one row per scored task (score, criteria, reason, evidence files)
+  * pending_answers -- spoken answers of a task not finished yet. In the database rather than in
+                      memory, so any server copy can finish the task (Vercel runs many short-lived copies)
 
 Audio recordings and photos are written to results/session_.../ while a test runs and
 copied to private Supabase Storage when it is configured; the database stores their paths.
@@ -237,6 +239,18 @@ class PatientInvite(Base):
 
     examiner: Mapped[Examiner] = relationship()
     patient: Mapped["Patient | None"] = relationship()
+
+
+class PendingAnswer(Base):
+    __tablename__ = "pending_answers"
+    __table_args__ = (UniqueConstraint("session_id", "task", "step"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("test_sessions.id", ondelete="CASCADE"))
+    task: Mapped[int] = mapped_column(Integer)
+    step: Mapped[str] = mapped_column(String(50))
+    data: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 def max_points(tasks):

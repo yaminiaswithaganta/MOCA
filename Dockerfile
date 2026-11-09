@@ -23,5 +23,5 @@ RUN chmod -R a+rX /app && useradd --create-home moca && mkdir -p results && chow
 USER moca
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8000
-# One worker on purpose: Whisper and the answers of tests in progress live in memory.
+# One worker: each worker would load its own copy of the speech model.
 CMD ["sh", "-c", "exec python -m uvicorn webapp.server:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers"]

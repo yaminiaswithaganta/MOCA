@@ -73,12 +73,18 @@ http://127.0.0.1:5173 for live reload.
 
 ### Going online
 
+**Free:** Vercel (Hobby plan) runs it from `Dockerfile.vercel`; see `SETUP_FOR_AI.md`, Part DV. It shuts down when
+unused and the next visit waits while the speech model loads.
+
+`deploy/huggingface.py` puts it on Hugging Face Spaces (see `SETUP_FOR_AI.md`, Part D0). Docker Spaces need a
+Hugging Face PRO subscription; the Space sleeps when unused and wakes in a few minutes.
+
 The `Dockerfile` builds everything into one image. Host it on a service that runs long-lived containers with
 WebSockets, such as Render, Railway, Fly.io or a VM. Serverless platforms can't run Whisper. Pass the `.env`
 values as environment variables and serve over HTTPS, because browsers only allow the microphone on secure pages.
 In Supabase, set your site's address under Authentication > URL Configuration so email links return to it.
 
-Run **one worker** on a machine with at least 2 CPUs and 4 GB of memory. Speech is transcribed one phrase at a
+On an always-on host, use a machine with at least 2 CPUs and 4 GB of memory. Speech is transcribed one phrase at a
 time, so many patients talking at once will slow each other down.
 
 ---
@@ -405,6 +411,8 @@ Task 13 judges the date in the patient's own time zone, not the server's.
 ├── models/                    Task 3 digit model
 ├── images/                    Task 4 pictures
 ├── tests/                     test_web.py (accounts, access), test_moca.py (scoring)
+├── deploy/huggingface.py     Deployment to Hugging Face Spaces (needs PRO)
+├── Dockerfile.vercel, vercel.json, .vercelignore   Deployment to Vercel
 ├── Dockerfile, .env.example, .github/workflows/ci.yml
 └── results/                   Working copies of each test's files (never committed)
 ```
@@ -569,8 +577,9 @@ The server log is in the Terminal window (or `server.log` when started by an AI 
   clinic one. Examiner-run mode from the old app was replaced by patient self-testing.
 - **The patient's browser receives the test content** (the five words, for example) because it has to read them
   aloud. A determined patient could find them. Scores are never sent to it before release.
-- **A test in progress lives on one server.** Answers within a task are in memory, so a restart loses the current
-  task (finished tasks are safe). Run one worker.
+- **Each server copy loads its own speech model**, which takes time on a fresh start (on Vercel, after a few
+  minutes unused). Answers of a task in progress are stored in the database, so a restart or another copy can
+  still finish the task.
 - **Differences from the paper MoCA:**
   - letters are read every **2 s** (paper: 1 s) to give the camera time;
   - **serial 7s takes 4 answers** (paper: 5 subtractions: 4–5 correct = 3 points);

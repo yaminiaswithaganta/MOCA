@@ -8,6 +8,7 @@ neither Supabase nor a microphone. Above all it checks who can see what.
 """
 
 import os
+import shutil
 import sys
 import tempfile
 import threading
@@ -489,7 +490,8 @@ class TestOrientationTimeZone(unittest.TestCase):
                 for it in wt.t13.build_items(fixed.astimezone(ZoneInfo("Asia/Kolkata")).replace(tzinfo=None))}
         said["year"]["final"]["text"] = "two thousand twenty seven"
         said["month"]["final"]["text"] = "January"
-        listen.answers[sid] = {13: said}
+        for step, answer in said.items():
+            listen.save_answer(sid, 13, step, answer)
         with mock.patch.object(sessions, "datetime", Clock):
             self.assertEqual(p.post(f"/api/sessions/{sid}/tasks/13/finish").status_code, 200)
         p.post(f"/api/sessions/{sid}/finish")
@@ -526,6 +528,11 @@ class TestListeningSocket(unittest.TestCase):
 
 
 class TestNoSound(unittest.TestCase):
+    def setUp(self):
+        e, p = new_examiner(), new_patient()
+        self.sid = start(p, e.standard["id"])
+        self.folder = tempfile.mkdtemp()
+
     def run_worker(self, chunk):
         rec, sent = listen.StreamRecorder(), []
         if chunk:
@@ -533,9 +540,10 @@ class TestNoSound(unittest.TestCase):
         answer = {"phrases": [], "final": None, "end_reason": "no answer", "wav": "x.wav"}
         with mock.patch.object(listen, "engine"), \
                 mock.patch.object(listen, "_listen_answer", return_value=(answer, {"type": "done"})):
-            listen._listen_worker(987654, 4, "lion", "folder", 0, rec, sent.append,
+            listen._listen_worker(self.sid, 4, "lion", self.folder, 0, rec, sent.append,
                                   threading.Event(), threading.Event())
-        return sent[-1], listen.answers.pop(987654, None)
+        stored = listen.answers_for(self.sid, 4).get("lion")
+        return sent[-1], stored
 
     def test_no_audio_is_an_error_and_is_never_scored(self):
         msg, stored = self.run_worker(b"")
@@ -547,6 +555,60 @@ class TestNoSound(unittest.TestCase):
         msg, stored = self.run_worker(np.zeros(1600, np.float32).tobytes())
         self.assertEqual(msg["type"], "done")
         self.assertIsNotNone(stored)
+
+
+class TestPendingAnswers(unittest.TestCase):
+    """Answers of a task in progress live in the database, so any server copy can score the task."""
+
+    def test_saved_answers_survive_and_are_cleared(self):
+        e, p = new_examiner(), new_patient()
+        sid = start(p, e.standard["id"])
+        listen.save_answer(sid, 4, "lion", {"phrases": [{"text": "lion"}], "final": None, "end_reason": "x",
+                                            "wav": "a.wav", "result": (1, "ok", {"n": 2})})
+        listen.save_answer(sid, 4, "lion", {"phrases": [], "final": {"text": "a lion"}, "end_reason": "y", "wav": "b.wav"})
+        listen.save_answer(sid, 6, "forward", {"phrases": [], "final": None, "end_reason": "z", "wav": "c.wav"})
+        got = listen.answers_for(sid, 4)
+        self.assertEqual(list(got), ["lion"])
+        self.assertEqual(got["lion"]["final"]["text"], "a lion")         # a retry replaces the answer
+        listen.clear_answers(sid, 4)
+        self.assertEqual(listen.answers_for(sid, 4), {})
+        self.assertIn("forward", listen.answers_for(sid, 6))
+
+    def test_task_one_result_survives_the_database(self):
+        """Task 1 stores (score, reason, details); it comes back as a list and still scores."""
+        e, p = new_examiner(), new_patient()
+        t = e.post("/api/templates", {"name": "Trail", "tasks": [1], "published": True}).json()
+        sid = start(p, t["id"])
+        details = {"spoken_sequence": ["1", "A"], "final_transcript": "one a", "end_reason": "x"}
+        listen.save_answer(sid, 1, "path", {"result": (0, "incomplete", details), "wav": "t.wav", "transcript": "t.json"})
+        self.assertEqual(p.post(f"/api/sessions/{sid}/tasks/1/finish").status_code, 200)
+        self.assertEqual(listen.answers_for(sid, 1), {})
+        p.post(f"/api/sessions/{sid}/finish")
+        r = e.get(f"/api/sessions/{sid}").json()["report"]["tasks"]["task1_trail_making"]
+        self.assertEqual((r["score"], r["reason"]), (0, "incomplete"))
+
+    def test_finishing_or_deleting_clears_them(self):
+        e, p = new_examiner(), new_patient()
+        sid = start(p, e.standard["id"])
+        listen.save_answer(sid, 4, "lion", {"phrases": [], "final": None, "end_reason": "x", "wav": "a.wav"})
+        p.post(f"/api/sessions/{sid}/finish")
+        self.assertEqual(listen.answers_for(sid, 4), {})
+        sid = start(p, e.standard["id"])
+        listen.save_answer(sid, 4, "lion", {"phrases": [], "final": None, "end_reason": "x", "wav": "a.wav"})
+        p.post(f"/api/sessions/{sid}/finish")
+        self.assertEqual(e.delete(f"/api/sessions/{sid}").status_code, 200)
+
+    def test_scoring_works_without_the_original_folder(self):
+        """A fresh server copy has no results folder: scoring must make it."""
+        e, p = new_examiner(), new_patient()
+        t = e.post("/api/templates", {"name": "Recall", "tasks": [5, 12], "published": True}).json()
+        sid = start(p, t["id"])
+        with SessionLocal() as db:
+            shutil.rmtree(db.get(TestSession, sid).folder)
+        for step in ("trial1", "trial2"):
+            listen.save_answer(sid, 5, step, {"phrases": [{"text": "face velvet"}], "final": {"text": "face velvet"},
+                                              "end_reason": "x", "wav": f"{step}.wav"})
+        self.assertEqual(p.post(f"/api/sessions/{sid}/tasks/5/finish").status_code, 200)
 
 
 class TestSharedEngine(unittest.TestCase):
@@ -678,7 +740,7 @@ class TestPatientInvites(unittest.TestCase):
     DOB = "1948-03-02"
 
     def invite(self, examiner, email=None, dob=None):
-        email = email or f"pat{_n[0]}{len(listen.answers)}@example.com"
+        email = email or f"pat{_n[0]}@example.com"
         r = examiner.post("/api/invites", {"name": "Meena Rao", "email": email, "date_of_birth": dob or self.DOB})
         assert r.status_code == 200, r.text
         return r.json()

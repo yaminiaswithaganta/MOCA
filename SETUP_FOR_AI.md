@@ -280,6 +280,93 @@ or set up an email provider (Part E, "Emails don't arrive").
 
 Only do this if they want people to use it from their own devices.
 
+There are three ways:
+- **Vercel: free (Hobby plan, non-commercial use, fine for an academic project).** Steps in **DV** below.
+  The catch: after about 5 minutes with nobody using it, it shuts down, and the next visit waits while
+  the speech model loads. It runs on 1 CPU, so transcription is slower than on a laptop.
+- **Hugging Face Spaces:** needs a paid Hugging Face PRO subscription. Steps in D0.
+- **A paid always-on host (Railway, Render):** steps in D1 to D7.
+
+### DV. Free: Vercel
+The project has `Dockerfile.vercel` and `vercel.json`, and Vercel builds the app from them. The image has
+the speech model built in. `.vercelignore` stops `.env`, recordings and databases from being uploaded.
+
+1. **Account:** the person signs up at https://vercel.com (the free **Hobby** plan).
+2. **Sign in once:** ask them to run this in their own **Terminal**, in the project folder, and follow the
+   browser prompt:
+   ```bash
+   npx vercel login
+   ```
+3. **Create the project** (you run these):
+   ```bash
+   npx vercel link --yes --project moca-web
+   ```
+4. **Add the settings** from `.env` without printing them. Run this for each of `MOCA_SUPABASE_URL`,
+   `MOCA_SUPABASE_ANON_KEY`, `MOCA_SUPABASE_SERVICE_KEY` and `MOCA_DATABASE_URL`:
+   ```bash
+   .venv/bin/python -c "from dotenv import dotenv_values; print(dotenv_values('.env')['MOCA_SUPABASE_URL'], end='')" \
+     | npx vercel env add MOCA_SUPABASE_URL production
+   ```
+5. **Deploy:**
+   ```bash
+   npx vercel deploy --prod
+   ```
+   The first build takes 10 to 20 minutes (it installs everything and builds in the speech model). It
+   prints the address, for example `https://moca-web.vercel.app`.
+6. **Tell the app and Supabase its address:**
+   ```bash
+   printf '%s' "https://THE-ADDRESS" | npx vercel env add MOCA_SITE_URL production
+   npx vercel deploy --prod
+   ```
+   In Supabase, **Authentication → URL Configuration**: **Site URL** = the address, and add
+   `https://THE-ADDRESS/**` under **Redirect URLs**.
+7. **Check:** open `https://THE-ADDRESS/api/status` (the first visit can take a while: the server is
+   starting), then sign in at `https://THE-ADDRESS/login`.
+
+**Updating later:** run step 5 again.
+
+If the build fails, the error is in the deployment's **Build Logs** in the Vercel dashboard. If requests
+fail after the build, look at **Logs**. Common causes: a missing setting from step 4, or the free plan's
+memory limit (2 GB). On a small plan, add `MOCA_WHISPER_MODEL=base.en` the same way as step 4, using
+`printf '%s' base.en | npx vercel env add MOCA_WHISPER_MODEL production`.
+
+### D0. Hugging Face Spaces (needs Hugging Face PRO)
+The script `deploy/huggingface.py` does almost everything. It creates a **private** Space built from the
+`Dockerfile`, uploads **only committed code** (never `.env`, recordings or databases), stores the Supabase
+settings from `.env` as private Space secrets without printing them, and prints the app's address.
+
+1. **Account:** the person signs up at https://huggingface.co and subscribes to **PRO**. Without it,
+   creating the Space fails with "402 Payment Required".
+2. **Access token:** **huggingface.co → Settings → Access Tokens → Create new token**, type **Write**. They
+   copy it but **don't paste it into the chat**.
+3. **Sign in once:** ask them to run this in their own **Terminal** window, in the project folder, and
+   paste the token when asked:
+   ```bash
+   .venv/bin/hf auth login
+   ```
+   Answering **No** to "Add token as git credential" is fine.
+4. **Check, then deploy** (you run these). Use a Space name such as `moca-web`:
+   ```bash
+   .venv/bin/python deploy/huggingface.py moca-web --dry-run
+   .venv/bin/python deploy/huggingface.py moca-web
+   ```
+   The dry run shows the address and what will be uploaded, and changes nothing. Note the **App** address
+   it prints, for example `https://name-moca-web.hf.space`.
+5. **Tell Supabase the address:** **Authentication → URL Configuration** → **Site URL** = the App address,
+   and add `https://THE-APP-ADDRESS/**` under **Redirect URLs**.
+6. **Wait for the build:** open the Space page the script printed. The first build takes 10 to 20 minutes.
+   When it says **Running**, open `https://THE-APP-ADDRESS/api/status` and wait for `"speech_ready":true`.
+7. **Sign in** at `https://THE-APP-ADDRESS/login` with the admin account. Accounts live in Supabase, so
+   existing ones work online too.
+
+**Updating later:** commit the changes, then run step 4 again.
+
+If the build fails, open the Space's **Logs** tab and read the error. If a free private Space isn't
+allowed, run step 4 with `--public` added. The code is already public on GitHub; patient data stays in
+Supabase either way.
+
+The paid-host steps follow.
+
 ### D1. What the app needs from a host
 Explain these simply. They decide which host to use:
 
@@ -289,8 +376,8 @@ Explain these simply. They decide which host to use:
   plan, add the setting `MOCA_WHISPER_MODEL=base.en` (smaller and faster, a bit less accurate).
 - **HTTPS.** Browsers only allow the microphone on secure (`https://`) sites. Most hosts provide
   this.
-- **Run one copy.** Don't scale to more than 1 instance: tests in progress are held in that
-  server's memory.
+- **More than one copy is fine.** Answers of a task in progress are kept in the database, so any copy
+  can finish a task. Each copy loads its own speech model, so each needs the memory above.
 - **It costs money.** Free plans are usually too small. Check current prices on the host's website
   before choosing. For an academic project, ask the supervisor whether the university has a server.
 

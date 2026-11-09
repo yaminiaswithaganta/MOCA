@@ -30,7 +30,7 @@ except ImportError:  # pragma: no cover
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
-RESULTS_ROOT = PROJECT_DIR / "results"
+RESULTS_ROOT = Path(os.environ.get("MOCA_RESULTS_DIR") or PROJECT_DIR / "results")
 # Fixed maximum per task -- the scoring can never exceed these.
 TASK_MAX_SCORES = {
     "task1_trail_making": 1,

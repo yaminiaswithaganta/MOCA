@@ -1,0 +1,14 @@
+# Never upload these to Vercel: secrets, patient data and local builds
+.env
+.env.*
+!.env.example
+*.db
+results/
+.venv/
+__pycache__/
+frontend/node_modules/
+frontend/dist/
+tests/
+tools/
+_superseded/
+.git/

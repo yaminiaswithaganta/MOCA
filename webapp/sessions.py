@@ -32,7 +32,7 @@ from . import web_tasks as wt
 from .auth import current_examiner, current_patient, current_user, get_db
 from .db import (Examiner, Patient, PatientInvite, SessionLocal, TaskResult, TestSession, TestTemplate, User, iso,
                  max_points, utcnow)
-from .listen import answers
+from .listen import answers_for, clear_answers
 
 router = APIRouter(prefix="/api")
 
@@ -97,7 +97,8 @@ def _store_result(session_id, folder, std):
         row.created_at = utcnow()
         db.commit()
     for path in std["evidence_files"]:
-        storage.upload(folder, path)
+        if Path(path).is_file():                       # recordings were uploaded as they were made
+            storage.upload(folder, path)
     return {"task": std["task"], "saved": True}      # the score stays with the examiner
 
 
@@ -211,7 +212,7 @@ def finish_session(session_id: int, patient: Patient = Depends(current_patient),
     _apply_totals(s)
     s.status, s.finished_at = "finished", utcnow()
     db.commit()
-    answers.pop(session_id, None)
+    clear_answers(session_id)
     return _patient_out(s)
 
 
@@ -220,14 +221,15 @@ def finish_spoken_task(session_id: int, number: int, patient: Patient = Depends(
                        db: Session = Depends(get_db)):
     s = _taking(db, session_id, patient)
     _check_task(s, number)
-    given = answers.get(session_id, {}).get(number, {})
+    given = answers_for(session_id, number)
+    Path(s.folder).mkdir(parents=True, exist_ok=True)
     # the date the patient should say is the one where they are, not where the server is
     local_now = datetime.now(ZoneInfo(s.timezone)).replace(tzinfo=None)
     try:
         std = wt.finish_task(number, given, s.folder, local_now)
     except wt.MissingAnswers as e:
         raise HTTPException(400, str(e))
-    answers.get(session_id, {}).pop(number, None)
+    clear_answers(session_id, number)
     return _store_result(session_id, s.folder, std)
 
 
@@ -240,7 +242,7 @@ def skip_task(session_id: int, number: int, patient: Patient = Depends(current_p
     task_id = TASK_IDS[number]
     std = make_task_result(task_id, 0, reason="skipped by the patient", completed=False,
                            criteria=DEFAULT_CRITERIA.get(task_id))
-    answers.get(session_id, {}).pop(number, None)
+    clear_answers(session_id, number)
     return _store_result(session_id, s.folder, std)
 
 
@@ -252,6 +254,7 @@ async def task_photo(session_id: int, number: int, file: UploadFile = File(...),
     s = _taking(db, session_id, patient)
     _check_task(s, number)
     folder = Path(s.folder)
+    folder.mkdir(parents=True, exist_ok=True)
     data = await file.read()
     if len(data) > MAX_PHOTO_BYTES:
         raise HTTPException(413, "the photo is too large")
@@ -269,6 +272,7 @@ def task_letters(session_id: int, data: dict, patient: Patient = Depends(current
                  db: Session = Depends(get_db)):
     s = _taking(db, session_id, patient)
     _check_task(s, 7)
+    Path(s.folder).mkdir(parents=True, exist_ok=True)
     try:
         std = wt.score_letters(data, s.folder)
     except ValueError as e:
@@ -425,9 +429,9 @@ def delete_session(session_id: int, examiner: Examiner = Depends(current_examine
     folder = Path(s.folder)
     names = [p.name for p in folder.iterdir()] if folder.is_dir() else []
     names += [Path(f).name for r in s.results for f in r.evidence_files]
+    clear_answers(session_id)
     db.delete(s)
     db.commit()
-    answers.pop(session_id, None)
     storage.delete_folder(folder, sorted(set(names)))
     shutil.rmtree(folder, ignore_errors=True)
     return {"deleted": session_id}

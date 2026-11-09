@@ -1,6 +1,7 @@
 """
 Live listening: the browser streams 16 kHz float32 audio over a WebSocket, Whisper
-transcribes it here. Holds the speech recogniser and the answers of tasks in progress.
+transcribes it here. Holds the speech recogniser, and saves each answer of a task in
+progress to the database (and its recording to storage) until the task is scored.
 """
 
 import asyncio
@@ -15,9 +16,12 @@ from fastapi import APIRouter, HTTPException, WebSocket
 
 from moca_speech import get_engine, save_wav
 
+from sqlalchemy import delete, select
+
+from . import storage
 from . import web_tasks as wt
 from .auth import verify_token
-from .db import SessionLocal, TestSession, User
+from .db import PendingAnswer, SessionLocal, TestSession, User
 
 SAMPLE_RATE = 16000
 
@@ -68,8 +72,37 @@ def preload_engine():
     threading.Thread(target=load, daemon=True).start()
 
 
-# Recorded answers of the task in progress: {session_id: {task: {step: answer}}}
-answers = {}
+# --------------------------------------------------------------------------
+# Answers of tasks in progress: in the database, so any server copy can score them
+# --------------------------------------------------------------------------
+def save_answer(session_id, number, step, answer):
+    data = json.loads(json.dumps(answer, default=str))
+    with SessionLocal() as db:
+        row = db.scalar(select(PendingAnswer).where(PendingAnswer.session_id == session_id,
+                                                    PendingAnswer.task == number,
+                                                    PendingAnswer.step == step))
+        if row is None:
+            db.add(PendingAnswer(session_id=session_id, task=number, step=step, data=data))
+        else:
+            row.data = data
+        db.commit()
+
+
+def answers_for(session_id, number):
+    """{step: answer} of one task."""
+    with SessionLocal() as db:
+        rows = db.scalars(select(PendingAnswer).where(PendingAnswer.session_id == session_id,
+                                                      PendingAnswer.task == number))
+        return {r.step: r.data for r in rows}
+
+
+def clear_answers(session_id, number=None):
+    with SessionLocal() as db:
+        stmt = delete(PendingAnswer).where(PendingAnswer.session_id == session_id)
+        if number is not None:
+            stmt = stmt.where(PendingAnswer.task == number)
+        db.execute(stmt)
+        db.commit()
 
 
 class StreamRecorder:
@@ -112,6 +145,7 @@ def _listen_worker(session_id, number, step, folder, extra_seconds, rec, send, s
         send({"type": "error", "text": f"Speech recogniser could not start: {e}"})
         return
     send({"type": "ready"})
+    Path(folder).mkdir(parents=True, exist_ok=True)     # a fresh server copy has no folder yet
     if number == 1:
         answer, done_msg = _listen_trail(eng, rec, send, stop, folder)
     else:
@@ -123,7 +157,10 @@ def _listen_worker(session_id, number, step, folder, extra_seconds, rec, send, s
         # a blocked microphone must never look like a patient who didn't answer
         send({"type": "error", "text": "No sound reached the app. Check your microphone, then try again."})
         return
-    answers.setdefault(session_id, {}).setdefault(number, {})[step] = answer
+    for key in ("wav", "transcript"):                  # the next request may run on another copy
+        if answer.get(key):
+            storage.upload(folder, answer[key])
+    save_answer(session_id, number, step, answer)
     send(done_msg)
 
 
