@@ -886,7 +886,7 @@ class TestAskTheManual(unittest.TestCase):
         fake = mock.Mock(passages=[self.PASSAGE])
         fake.search.side_effect = lambda q: [self.PASSAGE] if "clock" in q.lower() else []
         self.patches = [mock.patch.object(manual, "library", return_value=fake),
-                        mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"})]
+                        mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key", "OPENAI_API_KEY": ""})]
         for p in self.patches:
             p.start()
 
@@ -913,10 +913,17 @@ class TestAskTheManual(unittest.TestCase):
         answer.assert_not_called()
 
     def test_missing_key_says_how_to_fix_it(self):
-        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}):
+        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "", "OPENAI_API_KEY": ""}):
             r = new_examiner().post("/api/manual/ask", {"question": "clock?"})
         self.assertEqual(r.status_code, 503)
-        self.assertIn("ANTHROPIC_API_KEY", r.json()["detail"])
+        self.assertIn("OPENAI_API_KEY", r.json()["detail"])
+
+    def test_openai_key_alone_uses_openai(self):
+        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "", "OPENAI_API_KEY": "sk-test"}), \
+                mock.patch.object(manual, "answer_openai", return_value="From OpenAI [1].") as gpt:
+            r = new_examiner().post("/api/manual/ask", {"question": "How is the clock scored?"})
+        self.assertEqual(r.json()["answer"], "From OpenAI [1].")
+        gpt.assert_called_once()
 
     def test_search_ranks_the_matching_passage_first(self):
         lib = manual.Library.__new__(manual.Library)

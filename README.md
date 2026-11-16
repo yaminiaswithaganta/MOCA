@@ -614,8 +614,8 @@ RAG prototype in `webapp/manual.py`:
 
 1. **Read**: the PDFs in `knowledge/manuals/` are split into short passages on first use.
 2. **Find**: the passages that best match the question are picked (BM25 keyword search).
-3. **Answer**: Claude answers from those passages only and cites them like `[2]`.
+3. **Answer**: an AI model (OpenAI, or Claude) answers from those passages only and cites them like `[2]`.
 
 To set it up, put the manual PDFs in `knowledge/manuals/` (they aren't committed because they're
-copyrighted) and add `ANTHROPIC_API_KEY=...` to `.env`. To change what it knows, add or remove
+copyrighted) and add `OPENAI_API_KEY=...` (or `ANTHROPIC_API_KEY=...`) to `.env`. To change what it knows, add or remove
 PDFs and restart the server.

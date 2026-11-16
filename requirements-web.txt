@@ -12,3 +12,4 @@ httpx
 # Ask the manual (examiner question answering over the MoCA manuals)
 anthropic>=2.8
 pypdf
+openai>=1.40

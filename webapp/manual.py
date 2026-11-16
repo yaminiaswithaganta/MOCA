@@ -4,10 +4,10 @@ Ask the manual: examiners ask a question and get an answer from the MoCA manuals
 How it works, in three steps:
   1. Read   -- every PDF in knowledge/manuals/ is split into short passages (once, on first use).
   2. Find   -- the passages that share the most words with the question are picked (BM25 search).
-  3. Answer -- Claude writes the answer using only those passages, and says which ones it used.
+  3. Answer -- an AI model writes the answer using only those passages, and says which ones it used.
 
 To change what it knows, add or remove PDFs in knowledge/manuals/ and restart the server.
-Needs ANTHROPIC_API_KEY in .env.
+Needs OPENAI_API_KEY (uses OpenAI) or ANTHROPIC_API_KEY (uses Claude) in .env.
 """
 
 import logging
@@ -19,6 +19,7 @@ from collections import Counter
 from dataclasses import dataclass
 
 import anthropic
+import openai
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
@@ -31,7 +32,8 @@ log = logging.getLogger("moca")
 router = APIRouter(prefix="/api/manual")
 
 MANUALS_DIR = PROJECT_DIR / "knowledge" / "manuals"
-MODEL = os.environ.get("MOCA_MANUAL_MODEL", "claude-opus-5-5")
+CLAUDE_MODEL = os.environ.get("MOCA_MANUAL_MODEL", "claude-opus-5-5")
+OPENAI_MODEL = os.environ.get("MOCA_OPENAI_MODEL", "gpt-5-mini")
 TOP_K = 6                 # passages given to Claude per question
 CHUNK_CHARS = 1200        # about a long paragraph
 OVERLAP_CHARS = 200       # so a rule cut in half still appears whole in one passage
@@ -142,28 +144,48 @@ def library():
         return _library
 
 
-_client = None
+def provider():
+    """Which AI answers: Claude if its key is set, else OpenAI, else none."""
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return "claude"
+    if os.environ.get("OPENAI_API_KEY"):
+        return "openai"
+    return None
 
 
-def claude():
-    global _client
-    if _client is None:
-        _client = anthropic.Anthropic()
-    return _client
+_clients = {}
+
+
+def _prompt(question, passages):
+    excerpts = "\n\n".join(f'<passage n="{i}" source="{p.source}" page="{p.page}">\n{p.text}\n</passage>'
+                           for i, p in enumerate(passages, start=1))
+    return f"<passages>\n{excerpts}\n</passages>\n\nQuestion: {question}"
 
 
 def answer(question, passages):
-    """Claude's answer to the question, using only the numbered passages."""
-    excerpts = "\n\n".join(f'<passage n="{i}" source="{p.source}" page="{p.page}">\n{p.text}\n</passage>'
-                           for i, p in enumerate(passages, start=1))
-    response = claude().beta.messages.create(
-        model=MODEL,
+    """The answer to the question, using only the numbered passages."""
+    if provider() == "openai":
+        return answer_openai(question, passages)
+    return answer_claude(question, passages)
+
+
+def answer_openai(question, passages):
+    client = _clients.setdefault("openai", openai.OpenAI())
+    response = client.responses.create(model=OPENAI_MODEL, instructions=SYSTEM_PROMPT,
+                                       input=_prompt(question, passages))
+    return response.output_text.strip()
+
+
+def answer_claude(question, passages):
+    client = _clients.setdefault("claude", anthropic.Anthropic())
+    response = client.beta.messages.create(
+        model=CLAUDE_MODEL,
         max_tokens=16000,
         system=SYSTEM_PROMPT,
         output_config={"effort": "low"},        # a short lookup, not a hard problem
         betas=["server-side-fallback-2026-07-01"],
         fallbacks="default",                     # if a safety check declines, another model answers
-        messages=[{"role": "user", "content": f"<passages>\n{excerpts}\n</passages>\n\nQuestion: {question}"}],
+        messages=[{"role": "user", "content": _prompt(question, passages)}],
     )
     if response.stop_reason == "refusal":
         return "Sorry, I can't answer that one. Try asking about how to give or score a task."
@@ -177,8 +199,9 @@ class Question(BaseModel):
 @router.post("/ask")
 def ask(body: Question, _: Examiner = Depends(current_examiner)):
     question = body.question.strip()
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise HTTPException(503, "Ask the manual isn't set up yet: add ANTHROPIC_API_KEY to .env")
+    if provider() is None:
+        raise HTTPException(503, "Ask the manual isn't set up yet: add OPENAI_API_KEY "
+                                 "(or ANTHROPIC_API_KEY) to .env")
     lib = library()
     if not lib.passages:
         raise HTTPException(503, "no manuals found: put the PDF manuals in knowledge/manuals/")
@@ -188,11 +211,13 @@ def ask(body: Question, _: Examiner = Depends(current_examiner)):
                           "for example the task's name (\"clock drawing\", \"delayed recall\").", "sources": []}
     try:
         text = answer(question, passages)
-    except anthropic.AuthenticationError as e:
-        raise HTTPException(503, "the ANTHROPIC_API_KEY in .env isn't valid") from e
-    except anthropic.RateLimitError as e:
-        raise HTTPException(429, "too many questions at once, please wait a moment and try again") from e
-    except (anthropic.APIStatusError, anthropic.APIConnectionError) as e:
+    except (anthropic.AuthenticationError, openai.AuthenticationError) as e:
+        raise HTTPException(503, "the API key in .env isn't valid") from e
+    except (anthropic.RateLimitError, openai.RateLimitError) as e:
+        raise HTTPException(429, "too many questions at once (or the account is out of credit), "
+                                 "please wait a moment and try again") from e
+    except (anthropic.APIStatusError, anthropic.APIConnectionError,
+            openai.APIStatusError, openai.APIConnectionError) as e:
         log.error("manual answer failed: %s", e)
         raise HTTPException(502, "couldn't reach the answering service, please try again") from e
     return {"answer": text,
