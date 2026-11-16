@@ -17,6 +17,7 @@ COPY webapp/ webapp/
 COPY migrations/ migrations/
 COPY models/ models/
 COPY images/ images/
+COPY knowledge/ knowledge/
 COPY --from=frontend /app/frontend/dist frontend/dist
 
 RUN chmod -R a+rX /app && useradd --create-home moca && mkdir -p results && chown moca results

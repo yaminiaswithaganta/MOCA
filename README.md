@@ -605,3 +605,17 @@ The server log is in the Terminal window (or `server.log` when started by an AI 
   trained by `tools/train_digit_model.py`.
 - **Figtree** font by Erik Kennedy, SIL Open Font License.
 - The reference cube is drawn by the code, not scanned from a test sheet.
+
+## Ask the manual (examiners)
+
+Examiners get an **Ask the manual** page that answers questions about giving and scoring
+the MoCA from the official instruction manuals, quoting the passages it used. It's a simple
+RAG prototype in `webapp/manual.py`:
+
+1. **Read**: the PDFs in `knowledge/manuals/` are split into short passages on first use.
+2. **Find**: the passages that best match the question are picked (BM25 keyword search).
+3. **Answer**: Claude answers from those passages only and cites them like `[2]`.
+
+To set it up, put the manual PDFs in `knowledge/manuals/` (they aren't committed because they're
+copyrighted) and add `ANTHROPIC_API_KEY=...` to `.env`. To change what it knows, add or remove
+PDFs and restart the server.

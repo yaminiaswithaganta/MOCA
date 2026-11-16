@@ -31,7 +31,7 @@ import numpy as np  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from moca_tasks import ALL_TASKS  # noqa: E402
-from webapp import listen, sessions, supabase_admin  # noqa: E402
+from webapp import listen, manual, sessions, supabase_admin  # noqa: E402
 from webapp import web_tasks as wt  # noqa: E402
 from webapp.db import SessionLocal, TestSession, User, init_db  # noqa: E402
 from webapp.server import app  # noqa: E402
@@ -874,6 +874,61 @@ class TestServing(unittest.TestCase):
     def test_page_routes_cannot_escape_the_build_folder(self):
         r = client.get("/..%2F..%2Fmoca_common.py")
         self.assertNotIn("make_task_result", r.text)
+
+
+class TestAskTheManual(unittest.TestCase):
+    """Examiners ask the MoCA manuals a question. The manuals and Claude are replaced here."""
+
+    PASSAGE = manual.Passage("MoCA 8.3", 2, "Clock: one point each for contour, numbers and hands.",
+                             manual.Counter(manual._words("clock contour numbers hands")), 4)
+
+    def setUp(self):
+        fake = mock.Mock(passages=[self.PASSAGE])
+        fake.search.side_effect = lambda q: [self.PASSAGE] if "clock" in q.lower() else []
+        self.patches = [mock.patch.object(manual, "library", return_value=fake),
+                        mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"})]
+        for p in self.patches:
+            p.start()
+
+    def tearDown(self):
+        for p in self.patches:
+            p.stop()
+
+    def test_only_examiners_can_ask(self):
+        self.assertEqual(new_patient().post("/api/manual/ask", {"question": "clock?"}).status_code, 403)
+        self.assertEqual(client.post("/api/manual/ask", json={"question": "clock?"}).status_code, 401)
+
+    def test_answer_comes_with_the_passages_it_read(self):
+        with mock.patch.object(manual, "answer", return_value="Three points [1].") as answer:
+            r = new_examiner().post("/api/manual/ask", {"question": "How is the clock scored?"})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["answer"], "Three points [1].")
+        self.assertEqual(r.json()["sources"][0]["page"], 2)
+        self.assertEqual(answer.call_args.args[1], [self.PASSAGE])
+
+    def test_nothing_found_does_not_call_claude(self):
+        with mock.patch.object(manual, "answer") as answer:
+            r = new_examiner().post("/api/manual/ask", {"question": "weather in Paris"})
+        self.assertEqual(r.json()["sources"], [])
+        answer.assert_not_called()
+
+    def test_missing_key_says_how_to_fix_it(self):
+        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}):
+            r = new_examiner().post("/api/manual/ask", {"question": "clock?"})
+        self.assertEqual(r.status_code, 503)
+        self.assertIn("ANTHROPIC_API_KEY", r.json()["detail"])
+
+    def test_search_ranks_the_matching_passage_first(self):
+        lib = manual.Library.__new__(manual.Library)
+        texts = ["Clock drawing: one point for the contour.", "Serial 7s: subtract seven from 100.",
+                 "Naming: lion, rhino, camel."]
+        lib.passages = [manual.Passage("m", i, t, manual.Counter(manual._words(t)), len(manual._words(t)))
+                        for i, t in enumerate(texts, 1)]
+        lib.avg_len = sum(p.length for p in lib.passages) / 3
+        seen = manual.Counter(w for p in lib.passages for w in p.words)
+        lib.idf = {w: manual.math.log(1 + (3 - c + 0.5) / (c + 0.5)) for w, c in seen.items()}
+        self.assertEqual(lib.search("how do I score the clock drawings?")[0].page, 1)
+        self.assertEqual(lib.search("subtracting sevens")[0].page, 2)
 
 
 if __name__ == "__main__":

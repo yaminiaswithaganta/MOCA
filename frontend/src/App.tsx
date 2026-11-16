@@ -6,6 +6,7 @@ import { ForgotPassword, Login, ResetPassword, Signup } from "./pages/auth/AuthP
 import { AdminHome } from "./pages/admin/AdminHome";
 import { DeviceCheck } from "./pages/DeviceCheck";
 import { Join } from "./pages/Join";
+import { AskManual } from "./pages/examiner/AskManual";
 import { ExaminerHome } from "./pages/examiner/ExaminerHome";
 import { PatientDetail, Patients } from "./pages/examiner/Patients";
 import { Review } from "./pages/examiner/Review";
@@ -64,6 +65,7 @@ export function App() {
           <Route path="/examiner/tests/new" element={<TestEditor />} />
           <Route path="/examiner/tests/:id" element={<TestEditor />} />
           <Route path="/examiner/review/:id" element={<Review />} />
+          <Route path="/examiner/ask" element={<AskManual />} />
         </Route>
       </Route>
 

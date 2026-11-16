@@ -10,7 +10,7 @@ import { Avatar, Icon, Logo, Spinner } from "./ui";
 
 const NAV: Record<Role, [string, string, string][]> = {
   patient: [["/patient", "My tests", "file"], ["/patient/start", "Start a test", "play"], ["/check", "Mic & camera", "mic"], ["/profile", "My details", "user"]],
-  examiner: [["/examiner", "Overview", "grid"], ["/examiner/patients", "Patients", "users"], ["/examiner/tests", "Test designs", "file"], ["/profile", "My details", "user"]],
+  examiner: [["/examiner", "Overview", "grid"], ["/examiner/patients", "Patients", "users"], ["/examiner/tests", "Test designs", "file"], ["/examiner/ask", "Ask the manual", "chat"], ["/profile", "My details", "user"]],
   admin: [["/admin", "People", "users"]],
 };
 
