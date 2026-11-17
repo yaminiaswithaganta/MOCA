@@ -12,19 +12,17 @@ Needs OPENAI_API_KEY (uses OpenAI) or ANTHROPIC_API_KEY (uses Claude) in .env.
 
 import logging
 import math
-import os
 import re
 import threading
 from collections import Counter
 from dataclasses import dataclass
 
-import anthropic
-import openai
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from moca_common import PROJECT_DIR
 
+from . import ai
 from .auth import current_examiner
 from .db import Examiner
 
@@ -32,9 +30,7 @@ log = logging.getLogger("moca")
 router = APIRouter(prefix="/api/manual")
 
 MANUALS_DIR = PROJECT_DIR / "knowledge" / "manuals"
-CLAUDE_MODEL = os.environ.get("MOCA_MANUAL_MODEL", "claude-opus-5-5")
-OPENAI_MODEL = os.environ.get("MOCA_OPENAI_MODEL", "gpt-5-mini")
-TOP_K = 6                 # passages given to Claude per question
+TOP_K = 6                 # passages given to the model per question
 CHUNK_CHARS = 1200        # about a long paragraph
 OVERLAP_CHARS = 200       # so a rule cut in half still appears whole in one passage
 
@@ -144,18 +140,6 @@ def library():
         return _library
 
 
-def provider():
-    """Which AI answers: Claude if its key is set, else OpenAI, else none."""
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        return "claude"
-    if os.environ.get("OPENAI_API_KEY"):
-        return "openai"
-    return None
-
-
-_clients = {}
-
-
 def _prompt(question, passages):
     excerpts = "\n\n".join(f'<passage n="{i}" source="{p.source}" page="{p.page}">\n{p.text}\n</passage>'
                            for i, p in enumerate(passages, start=1))
@@ -164,32 +148,8 @@ def _prompt(question, passages):
 
 def answer(question, passages):
     """The answer to the question, using only the numbered passages."""
-    if provider() == "openai":
-        return answer_openai(question, passages)
-    return answer_claude(question, passages)
-
-
-def answer_openai(question, passages):
-    client = _clients.setdefault("openai", openai.OpenAI())
-    response = client.responses.create(model=OPENAI_MODEL, instructions=SYSTEM_PROMPT,
-                                       input=_prompt(question, passages))
-    return response.output_text.strip()
-
-
-def answer_claude(question, passages):
-    client = _clients.setdefault("claude", anthropic.Anthropic())
-    response = client.beta.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=16000,
-        system=SYSTEM_PROMPT,
-        output_config={"effort": "low"},        # a short lookup, not a hard problem
-        betas=["server-side-fallback-2026-07-01"],
-        fallbacks="default",                     # if a safety check declines, another model answers
-        messages=[{"role": "user", "content": _prompt(question, passages)}],
-    )
-    if response.stop_reason == "refusal":
-        return "Sorry, I can't answer that one. Try asking about how to give or score a task."
-    return "".join(b.text for b in response.content if b.type == "text").strip()
+    return (ai.complete(SYSTEM_PROMPT, _prompt(question, passages))
+            or "Sorry, I can't answer that one. Try asking about how to give or score a task.")
 
 
 class Question(BaseModel):
@@ -199,7 +159,7 @@ class Question(BaseModel):
 @router.post("/ask")
 def ask(body: Question, _: Examiner = Depends(current_examiner)):
     question = body.question.strip()
-    if provider() is None:
+    if ai.provider() is None:
         raise HTTPException(503, "Ask the manual isn't set up yet: add OPENAI_API_KEY "
                                  "(or ANTHROPIC_API_KEY) to .env")
     lib = library()
@@ -211,13 +171,12 @@ def ask(body: Question, _: Examiner = Depends(current_examiner)):
                           "for example the task's name (\"clock drawing\", \"delayed recall\").", "sources": []}
     try:
         text = answer(question, passages)
-    except (anthropic.AuthenticationError, openai.AuthenticationError) as e:
+    except ai.AuthError as e:
         raise HTTPException(503, "the API key in .env isn't valid") from e
-    except (anthropic.RateLimitError, openai.RateLimitError) as e:
+    except ai.RateLimited as e:
         raise HTTPException(429, "too many questions at once (or the account is out of credit), "
                                  "please wait a moment and try again") from e
-    except (anthropic.APIStatusError, anthropic.APIConnectionError,
-            openai.APIStatusError, openai.APIConnectionError) as e:
+    except ai.Failed as e:
         log.error("manual answer failed: %s", e)
         raise HTTPException(502, "couldn't reach the answering service, please try again") from e
     return {"answer": text,

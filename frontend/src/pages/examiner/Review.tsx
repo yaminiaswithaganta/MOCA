@@ -5,7 +5,7 @@ import { useCallback, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { TaskResultCard } from "../../components/TaskResultCard";
 import { Avatar, DOMAIN_OF, ErrorCard, FormError, Icon, Modal, Ring, Spinner, StageTag } from "../../components/ui";
-import { api, config } from "../../lib/api";
+import { api, config, fileUrl } from "../../lib/api";
 import { band, fmtDateTime, patientLine } from "../../lib/format";
 import type { ExaminerSession, TaskInfo } from "../../lib/types";
 
@@ -58,6 +58,16 @@ export function Review() {
     mutationFn: (note: string) => api<ExaminerSession>(`/api/sessions/${id}/release`, { method: "POST", body: { note } }),
     onSuccess: (s) => { refresh(s); setReleasing(false); },
   });
+  const pdf = useMutation({
+    mutationFn: async () => {
+      const url = await fileUrl(`/api/sessions/${id}/report.pdf`);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `MoCA report - ${session.data?.patient.name ?? id}.pdf`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    },
+  });
   const remove = useMutation({
     mutationFn: () => api(`/api/sessions/${id}`, { method: "DELETE" }),
     onSuccess: () => {
@@ -95,11 +105,14 @@ export function Review() {
             <p className="muted">{s.template_name} · {fmtDateTime(s.started_at)} · {patientLine(s.patient)}</p>
             <StageTag stage={s.stage} examiner /></div></div>
         <div className="page-actions no-print">
+          <button className="btn primary" disabled={pdf.isPending} onClick={() => pdf.mutate()}>
+            <Icon name="file" /> {pdf.isPending ? "Preparing report… (up to a minute)" : "Download report (PDF)"}
+          </button>
           <button className="btn" onClick={() => window.print()}><Icon name="print" /> Print</button>
           <button className="btn ghost danger" disabled={remove.isPending} onClick={() => { if (window.confirm("Permanently delete this test, with its recordings and photos? This can't be undone.")) remove.mutate(); }}><Icon name="trash" /> Delete</button>
         </div>
       </div>
-      <FormError error={remove.error?.message ?? null} />
+      <FormError error={remove.error?.message ?? pdf.error?.message ?? null} />
 
       {s.stage === "in_progress" && <div className="notice"><p>{s.patient.name} is still taking this test: {s.done_tasks.length} of {s.tasks.length} tasks done. The score below is provisional.</p></div>}
       {s.review_note && <div className="notice"><b>Your note to the patient</b><p style={{ whiteSpace: "pre-wrap" }}>{s.review_note}</p></div>}

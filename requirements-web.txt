@@ -13,3 +13,5 @@ httpx
 anthropic>=2.8
 pypdf
 openai>=1.40
+# PDF reports for examiners
+reportlab

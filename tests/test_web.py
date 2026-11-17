@@ -31,7 +31,7 @@ import numpy as np  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from moca_tasks import ALL_TASKS  # noqa: E402
-from webapp import listen, manual, sessions, supabase_admin  # noqa: E402
+from webapp import ai, listen, manual, sessions, supabase_admin  # noqa: E402
 from webapp import web_tasks as wt  # noqa: E402
 from webapp.db import SessionLocal, TestSession, User, init_db  # noqa: E402
 from webapp.server import app  # noqa: E402
@@ -920,10 +920,12 @@ class TestAskTheManual(unittest.TestCase):
 
     def test_openai_key_alone_uses_openai(self):
         with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "", "OPENAI_API_KEY": "sk-test"}), \
-                mock.patch.object(manual, "answer_openai", return_value="From OpenAI [1].") as gpt:
+                mock.patch.object(ai.openai, "OpenAI") as gpt:
+            gpt.return_value.responses.create.return_value.output_text = "From OpenAI [1]."
+            ai._clients.clear()
             r = new_examiner().post("/api/manual/ask", {"question": "How is the clock scored?"})
+            ai._clients.clear()
         self.assertEqual(r.json()["answer"], "From OpenAI [1].")
-        gpt.assert_called_once()
 
     def test_search_ranks_the_matching_passage_first(self):
         lib = manual.Library.__new__(manual.Library)
@@ -936,6 +938,36 @@ class TestAskTheManual(unittest.TestCase):
         lib.idf = {w: manual.math.log(1 + (3 - c + 0.5) / (c + 0.5)) for w, c in seen.items()}
         self.assertEqual(lib.search("how do I score the clock drawings?")[0].page, 1)
         self.assertEqual(lib.search("subtracting sevens")[0].page, 2)
+
+
+class TestPdfReport(unittest.TestCase):
+    """The examiner's PDF report: only for the test's own examiner, and it's a real PDF."""
+
+    def setUp(self):
+        self.examiner, self.patient = new_examiner(), new_patient()
+        self.sid = finished_test(self.patient, self.examiner)
+
+    def test_examiner_downloads_a_pdf(self):
+        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "", "OPENAI_API_KEY": ""}):
+            r = self.examiner.get(f"/api/sessions/{self.sid}/report.pdf")
+        self.assertEqual(r.status_code, 200, r.text[:300])
+        self.assertEqual(r.headers["content-type"], "application/pdf")
+        self.assertTrue(r.content.startswith(b"%PDF"))
+        self.assertIn("attachment", r.headers["content-disposition"])
+
+    def test_ai_summary_is_used_when_available(self):
+        with mock.patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}), \
+                mock.patch.object(ai, "complete", return_value="**Clinical Summary**\nAll tasks skipped.") as gpt:
+            r = self.examiner.get(f"/api/sessions/{self.sid}/report.pdf")
+        self.assertEqual(r.status_code, 200)
+        self.assertNotIn(self.patient_name(), gpt.call_args.args[1])   # no name sent to the AI
+
+    def test_others_cannot_download(self):
+        self.assertEqual(new_examiner().get(f"/api/sessions/{self.sid}/report.pdf").status_code, 404)
+        self.assertEqual(self.patient.get(f"/api/sessions/{self.sid}/report.pdf").status_code, 403)
+
+    def patient_name(self):
+        return self.patient.get("/api/me").json()["profile"]["name"]
 
 
 if __name__ == "__main__":

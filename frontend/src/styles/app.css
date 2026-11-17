@@ -623,6 +623,10 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
   :root { --bg: #fff; --shadow: none; --shadow-lg: none; }
   .sidebar, .foot, .review-bar, .no-print, .back, .evidence-audio { display: none !important; }
   main { padding: 0; }
+  /* the fade-in animation and the sidebar column printed as a blank page */
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .page, .stage { opacity: 1 !important; transform: none !important; }
+  .shell { display: block; }
   .card, .result-card { break-inside: avoid; border-color: #ccc; }
   .total-card { color: var(--ink); background: #fff; border: 1px solid #ccc; }
   .task-cards { grid-template-columns: 1fr 1fr; }

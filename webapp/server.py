@@ -29,7 +29,7 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from moca_common import PROJECT_DIR, RESULTS_ROOT  # noqa: E402
 
-from . import accounts, admin, invites, listen, manual, sessions, storage, templates  # noqa: E402
+from . import accounts, admin, invites, listen, manual, pdf_report, sessions, storage, templates  # noqa: E402
 from . import web_tasks as wt  # noqa: E402
 from .auth import SUPABASE_URL, current_patient, current_user  # noqa: E402
 from .db import Patient, User, init_db  # noqa: E402
@@ -80,6 +80,7 @@ app.include_router(templates.router)
 app.include_router(sessions.router)
 app.include_router(listen.router)
 app.include_router(manual.router)
+app.include_router(pdf_report.router)
 
 
 # --------------------------------------------------------------------------
