@@ -10,6 +10,8 @@ import type { ExaminerProfile, Me, PatientProfile } from "./types";
 interface Auth {
   session: Session | null;
   me: Me | null;
+  /** Why the app's own record couldn't be loaded, if it couldn't. */
+  meError: Error | null;
   loading: boolean;
   /** True after a "reset password" email link: the next page sets a new one. */
   recovering: boolean;
@@ -50,10 +52,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<Auth>(() => ({
     session,
     me: me.data ?? null,
+    meError: me.error ?? null,
     loading: !ready || (!!userId && me.isLoading),
     recovering,
     signOut: async () => { await supabase.auth.signOut(); },
-  }), [session, me.data, me.isLoading, ready, userId, recovering]);
+  }), [session, me.data, me.error, me.isLoading, ready, userId, recovering]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

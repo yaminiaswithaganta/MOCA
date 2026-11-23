@@ -54,7 +54,22 @@ export function Avatar({ name, large = false }: { name: string; large?: boolean 
   return <span className={`avatar ${large ? "lg" : ""}`} style={{ "--h": 185 + (h % 40) } as React.CSSProperties}>{initials}</span>;
 }
 
-export const Spinner = () => <div className="loading" role="status" aria-label="Loading"><div className="spinner" /></div>;
+const SLOW_MS = 8000;
+
+/** Loading. After a few seconds it says why it may take long, so the page never looks empty. */
+export function Spinner() {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setSlow(true), SLOW_MS);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <div className="loading" role="status" aria-label="Loading">
+      <div className="spinner" />
+      {slow && <p className="muted small">Still loading… The server may be starting up after a quiet spell, which can take up to a minute.</p>}
+    </div>
+  );
+}
 
 export function Empty({ icon, children }: { icon: string; children: ReactNode }) {
   return <div className="empty"><div className="empty-icon"><Icon name={icon} /></div>{children}</div>;

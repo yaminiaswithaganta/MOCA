@@ -6,6 +6,7 @@ import { Link, NavLink, Navigate, Outlet, useLocation } from "react-router";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import type { ExaminerProfile, PatientProfile, Role } from "../lib/types";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { Avatar, Icon, Logo, Spinner } from "./ui";
 
 const NAV: Record<Role, [string, string, string][]> = {
@@ -39,6 +40,7 @@ export function Brand({ to }: { to: string }) {
 
 export function AppLayout() {
   const { me, signOut } = useAuth();
+  const location = useLocation();
   const role = me?.role as Role;
   const name = (me?.profile as PatientProfile | ExaminerProfile | undefined)?.name ?? me?.email ?? "";
 
@@ -64,7 +66,8 @@ export function AppLayout() {
         </div>
       </aside>
       <div className="shell-main">
-        <main id="view"><Outlet /></main>
+        {/* keyed by page, so a crash on one page doesn't follow the examiner to the next */}
+        <main id="view"><ErrorBoundary key={location.pathname}><Outlet /></ErrorBoundary></main>
         <footer className="foot">A screening tool, not a diagnosis. Results are reviewed by a qualified examiner.</footer>
       </div>
     </div>
@@ -73,10 +76,24 @@ export function AppLayout() {
 
 /** Signed in with a finished account, and the right role for this part of the app. */
 export function RequireRole({ role }: { role?: Role }) {
-  const { session, me, loading, signOut } = useAuth();
+  const { session, me, meError, loading, signOut } = useAuth();
   const location = useLocation();
   if (loading) return <Spinner />;
   if (!session) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (!me && meError) {
+    // without this the page stayed empty with a spinner forever
+    return (
+      <main id="view"><div className="page narrow"><div className="card">
+        <h1>Couldn't load your account</h1>
+        <p className="error-text">{meError.message}</p>
+        <p className="muted">The server may have been starting up, or your sign-in has expired.</p>
+        <div className="row">
+          <button className="btn primary" onClick={() => window.location.reload()}>Try again</button>
+          <button className="btn ghost" onClick={signOut}>Sign out</button>
+        </div>
+      </div></div></main>
+    );
+  }
   if (!me) return <Spinner />;
   if (!me.role) return <Navigate to="/onboarding" replace />;
   if (me.deactivated) {

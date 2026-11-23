@@ -3,6 +3,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 import { App } from "./App";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ApiError } from "./lib/api";
 import { AuthProvider } from "./lib/auth";
 import { initSupabase } from "./lib/supabase";
@@ -24,9 +25,11 @@ initSupabase().then(() => {
     <StrictMode>
       <QueryClientProvider client={queries}>
         <BrowserRouter>
-          <AuthProvider>
-            <App />
-          </AuthProvider>
+          <ErrorBoundary>
+            <AuthProvider>
+              <App />
+            </AuthProvider>
+          </ErrorBoundary>
         </BrowserRouter>
       </QueryClientProvider>
     </StrictMode>,
