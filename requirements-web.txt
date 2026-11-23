@@ -12,6 +12,6 @@ httpx
 # Ask the manual (examiner question answering over the MoCA manuals)
 anthropic>=2.8
 pypdf
-openai>=1.40
+openai>=1.66            # the Responses API (webapp/ai.py) arrived in 1.66
 # PDF reports for examiners
 reportlab

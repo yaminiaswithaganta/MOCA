@@ -17,7 +17,9 @@ from datetime import date, datetime
 from pathlib import Path
 from xml.sax.saxutils import escape
 
+import cv2
 import matplotlib
+import numpy as np
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
@@ -31,7 +33,7 @@ from reportlab.lib.units import mm  # noqa: E402
 from reportlab.lib.fonts import addMapping  # noqa: E402
 from reportlab.pdfbase import pdfmetrics  # noqa: E402
 from reportlab.pdfbase.ttfonts import TTFont  # noqa: E402
-from reportlab.platypus import (Image, KeepTogether, PageBreak, Paragraph, SimpleDocTemplate,  # noqa: E402
+from reportlab.platypus import (Image, PageBreak, Paragraph, SimpleDocTemplate,  # noqa: E402
                                 Spacer, Table, TableStyle)
 from sqlalchemy.orm import Session  # noqa: E402
 
@@ -497,8 +499,24 @@ def _drawings(d):
             path = Path(s.folder) / name
             data = path.read_bytes() if path.is_file() else storage.download(s.folder, name)
             if data:
-                out.append((r.task_id, name, data))
+                out.append((r.task_id, name, _shrink(data)))
     return out[:6]
+
+
+DRAWING_MAX_PX = 1000     # printed about 80 mm wide, so this is still sharp
+
+
+def _shrink(data):
+    """A smaller JPEG of a photo. Full-size camera PNGs are about 2 MB each and pushed the PDF past
+    Vercel's 4.5 MB response limit."""
+    img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+    if img is None:
+        return data
+    h, w = img.shape[:2]
+    if w > DRAWING_MAX_PX:
+        img = cv2.resize(img, (DRAWING_MAX_PX, round(h * DRAWING_MAX_PX / w)), interpolation=cv2.INTER_AREA)
+    ok, jpg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    return jpg.tobytes() if ok else data
 
 
 # --------------------------------------------------------------------------
@@ -627,7 +645,9 @@ def build_pdf(s):
                 img.drawWidth, img.drawHeight = 80 * mm, 80 * mm * ratio
                 if img.drawHeight > 75 * mm:
                     img.drawHeight, img.drawWidth = 75 * mm, 75 * mm / ratio
-                cells.append(KeepTogether([img, Paragraph(escape(name), st["cell"])]))
+                # a plain list: KeepTogether reports a huge height to force a page break, which a table
+                # cell takes literally (LayoutError on every test with a cube or clock photo)
+                cells.append([img, Paragraph(escape(name), st["cell"])])
             except Exception as e:
                 log.error("report: could not add %s: %s", name, e)
         grid = [cells[i:i + 2] + [""] * (2 - len(cells[i:i + 2])) for i in range(0, len(cells), 2)]

@@ -962,6 +962,22 @@ class TestPdfReport(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertNotIn(self.patient_name(), gpt.call_args.args[1])   # no name sent to the AI
 
+    def test_report_with_a_drawing_photo(self):
+        """A full-size camera photo goes in the drawings section, and the PDF stays under Vercel's
+        4.5 MB response limit."""
+        t = self.examiner.post("/api/templates", {"name": "Cube", "tasks": [2], "published": True}).json()
+        sid = start(self.patient, t["id"])
+        noise = np.random.default_rng(0).integers(0, 256, (1080, 1920, 3), np.uint8)   # big as a PNG
+        ok, png = cv2.imencode(".png", noise)
+        r = client.post(f"/api/sessions/{sid}/tasks/2/photo", headers=self.patient.headers,
+                        files={"file": ("capture.png", png.tobytes(), "image/png")})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(self.patient.post(f"/api/sessions/{sid}/finish").status_code, 200)
+        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "", "OPENAI_API_KEY": ""}):
+            r = self.examiner.get(f"/api/sessions/{sid}/report.pdf")
+        self.assertEqual(r.status_code, 200, r.text[:300])
+        self.assertLess(len(r.content), 4_500_000)
+
     def test_others_cannot_download(self):
         self.assertEqual(new_examiner().get(f"/api/sessions/{self.sid}/report.pdf").status_code, 404)
         self.assertEqual(self.patient.get(f"/api/sessions/{self.sid}/report.pdf").status_code, 403)
