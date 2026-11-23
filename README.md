@@ -532,8 +532,9 @@ hand-raise detector on synthetic video.
   optional test-only models (see the file).
 - `TestRealPhotos` needs webcam photos in `tests/real_photos/`, which are not included in the repo
   (they show a real person). It fails without them.
-- **Known:** 1 clock test fails: a synthetic clock with an extra "13" still gets the "numbers" point
-  (`TestTask3Clock.test_cases`). With OpenCV 5, 3 more clock tests fail, which is why `requirements.txt`
+- **Known:** 1 clock test fails: in one of the three synthetic clocks with an extra "13", the 13 runs into
+  the "2", reads as an unclear number and still gets the "numbers" point (`TestTask3Clock.test_cases`).
+  Catching it means a stricter size limit for unclear numbers, which should be tuned on real drawings first. With OpenCV 5, 3 more clock tests fail, which is why `requirements.txt`
   keeps OpenCV below 5.
 
 ---

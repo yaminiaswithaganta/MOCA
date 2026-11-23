@@ -872,8 +872,13 @@ def _numbers_at_rotation(marks, face, hands, ink, sw, delta, cache):
     def arrow_fragment(m):
         return bool(med_h) and m["box"][3] < 0.6 * med_h and near_hand_tip(m, reach=0.25)
 
+    def full_height(m):
+        return bool(med_h) and m["box"][3] >= 0.8 * med_h
+
+    # a hand tip only excuses marks smaller than a numeral: a full-size extra number
+    # beside the minute hand (a "13" next to the 2) still costs the point
     extra = [m for m in unexplained + stray
-             if not near_hand_tip(m) and not is_tiny(m) and not arrow_fragment(m)]
+             if not (near_hand_tip(m) and not full_height(m)) and not is_tiny(m) and not arrow_fragment(m)]
     counts = {s: sum(1 for v in per_slot.values() if v["status"] == s)
               for s in ("confirmed", "unclear", "contradiction", "missing")}
     # one small speck or tick (much smaller than a numeral) next to a clear ring: a person ignores it.
